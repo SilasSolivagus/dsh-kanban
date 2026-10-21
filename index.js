@@ -20164,15 +20164,21 @@ var KanbanStore = class {
       assertInputObject(input2);
       const name = validateProjectName(input2.name);
       const workspacePath = validateWorkspacePath(input2.workspacePath);
-      const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
+      const base = slug.slice(0, 64);
       let id = base;
       let suffix = 2;
-      while (this.#tables.projects.get(id)) id = `${base}-${suffix++}`;
-      const prefixBase = name.toUpperCase().replace(/[^A-Z0-9]+/g, "").slice(0, 3) || "TSK";
+      while (this.#tables.projects.get(id)) {
+        const tail = `-${suffix++}`;
+        id = `${base.slice(0, 64 - tail.length)}${tail}`;
+      }
+      const prefixSource = name.toUpperCase().replace(/[^A-Z0-9]+/g, "").slice(0, 3) || "TSK";
+      const prefixBase = prefixSource.length < 2 ? `${prefixSource}X` : prefixSource;
       let taskPrefix = prefixBase;
       suffix = 2;
       while ([...this.#tables.projects.entries()].some(([, project2]) => project2.taskPrefix === taskPrefix)) {
-        taskPrefix = `${prefixBase.slice(0, 5)}${suffix++}`;
+        const tail = String(suffix++);
+        taskPrefix = `${prefixBase.slice(0, 6 - tail.length)}${tail}`;
       }
       const timestamp = this.#now();
       const project = {

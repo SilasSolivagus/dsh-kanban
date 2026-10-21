@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { KanbanStore } from '../store.js'
 import { MemoryTable } from './memory-table.js'
+import { projectSchema } from '../schema.js'
 
 function makeStore() {
   return new KanbanStore({
@@ -86,6 +87,24 @@ test('createProject accepts name and workspacePath boundaries', async () => {
 
   assert.equal(project.name, 'n'.repeat(120))
   assert.equal(project.workspacePath.length, 4096)
+  assert.ok(project.id.length <= 64)
+  assert.doesNotThrow(() => projectSchema.parse(project))
+})
+
+test('createProject keeps every generated id and prefix inside the domain schema', async () => {
+  const store = makeStore()
+  const created = []
+  for (const name of ['A', '1', 'x'.repeat(120), 'DSH 看板', 'A']) {
+    created.push(await store.createProject({ name }))
+  }
+
+  for (const project of created) {
+    assert.ok(project.id.length >= 1 && project.id.length <= 64, project.id)
+    assert.match(project.taskPrefix, /^[A-Z0-9]{2,6}$/)
+    assert.doesNotThrow(() => projectSchema.parse(project))
+  }
+  assert.equal(new Set(created.map((project) => project.id)).size, created.length)
+  assert.equal(new Set(created.map((project) => project.taskPrefix)).size, created.length)
 })
 
 test('renameProject validates name and leaves the project unchanged', async () => {
