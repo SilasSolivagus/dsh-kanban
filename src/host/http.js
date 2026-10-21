@@ -163,9 +163,17 @@ function contentDisposition(filename) {
 }
 
 async function streamDownload(store, response, attachmentId) {
+  let id
+  try {
+    id = decodePathSegment(attachmentId)
+  } catch (error) {
+    const failure = toError(error)
+    sendJson(response, failure.status, failure.body)
+    return
+  }
   let stream
   try {
-    const result = store.readAttachment(decodeURIComponent(attachmentId))
+    const result = store.readAttachment(id)
     const attachment = result.attachment
     response.writeHead(200, {
       'content-type': attachment.contentType,

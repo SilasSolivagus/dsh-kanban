@@ -486,6 +486,23 @@ test('createHttpHandler treats an empty DELETE body as an empty object', async (
   ])
 })
 
+test('createHttpHandler rejects malformed attachment download ids with 400 INVALID_PATH', async () => {
+  const handler = createHttpHandler({
+    readAttachment() {
+      throw new Error('should not be called')
+    },
+  })
+  const response = makeResponse()
+
+  await handler({ method: 'GET', url: '/kanban-api/attachments/%E0%A4%A' }, response)
+
+  assert.equal(response.status, 400)
+  assert.equal(response.headers['cache-control'], 'no-store')
+  assert.equal(JSON.parse(response.body()).error.code, 'INVALID_PATH')
+  assert.ok(!response.body().includes('URIError'))
+  assert.ok(!response.body().includes('decodeURIComponent'))
+})
+
 test('createHttpHandler passes searchParams and JSON error envelopes through', async () => {
   const calls = []
   const handler = createHttpHandler({
