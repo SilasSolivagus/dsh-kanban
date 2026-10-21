@@ -1502,6 +1502,7 @@ Expected: `addAttachment is not a function`.
       stream: this.#attachments.readFileStream(attachment.storageRef),
     }
   }
+```
 
 - [ ] **Step 4: Write failing HTTP bootstrap test**
 
@@ -2020,6 +2021,18 @@ export function apply(ctx) {
 ```
 
 - [ ] **Step 2: Implement the App shell**
+
+Import the stylesheet as text in `src/client/components/App.js`:
+
+```js
+import styles from '../styles.css'
+```
+
+Render it once at the top of the App tree:
+
+```jsx
+<style>{styles}</style>
+```
 
 `App` must:
 
