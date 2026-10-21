@@ -83,6 +83,10 @@ test('invalid attachment fields throw INVALID_FIELD', async () => {
     [{ ...VALID, filename: '   ' }, 'filename'],
     [{ ...VALID, filename: 'f'.repeat(256) }, 'filename'],
     [{ ...VALID, filename: 42 }, 'filename'],
+    [{ ...VALID, filename: 'bad\nname.txt' }, 'filename'],
+    [{ ...VALID, filename: 'bad\rname.txt' }, 'filename'],
+    [{ ...VALID, filename: 'bad\u0000name.txt' }, 'filename'],
+    [{ ...VALID, filename: 'bad\u007fname.txt' }, 'filename'],
     [{ ...VALID, contentType: '' }, 'contentType'],
     [{ ...VALID, contentType: 't'.repeat(201) }, 'contentType'],
     [{ ...VALID, contentType: null }, 'contentType'],
@@ -172,6 +176,10 @@ test('deleteAttachment removes metadata and rejects archived tasks and projects'
 
   await store.archiveTask(task.id, { version: store.getTaskDetail(task.id).task.version })
   await assert.rejects(
+    () => store.deleteAttachment(task.id, 'missing-attachment'),
+    (error) => error.code === 'NOT_FOUND',
+  )
+  await assert.rejects(
     () => store.deleteAttachment(task.id, kept.id),
     (error) => error.code === 'TASK_ARCHIVED',
   )
@@ -184,6 +192,26 @@ test('deleteAttachment removes metadata and rejects archived tasks and projects'
   await assert.rejects(
     () => store.deleteAttachment(archivedTask.id, archivedAttachment.id),
     (error) => error.code === 'PROJECT_ARCHIVED',
+  )
+})
+
+test('deleteAttachment records a task-scoped removal activity event', async () => {
+  const { store } = makeStore()
+  const task = await seedTask(store)
+  const other = await store.createTask({ projectId: task.projectId, title: 'other' })
+  const attachment = await store.addAttachment(task.id, VALID)
+
+  await store.deleteAttachment(task.id, attachment.id)
+
+  const activity = store.getTaskDetail(task.id).activity
+  const removal = activity.at(-1)
+  assert.deepEqual(removal.changes, [{ field: 'attachment', before: 'f.txt', after: null }])
+  assert.equal(removal.taskId, task.id)
+
+  const otherActivity = store.getTaskDetail(other.id).activity
+  assert.equal(
+    otherActivity.some((event) => event.changes.some((change) => change.field === 'attachment')),
+    false,
   )
 })
 

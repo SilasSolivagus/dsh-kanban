@@ -46,3 +46,60 @@ test('delete rejects a non-empty project', async () => {
     (error) => error.code === 'PROJECT_NOT_EMPTY',
   )
 })
+
+test('createProject validates name and workspacePath at the write boundary', async () => {
+  const store = makeStore()
+  const cases = [
+    [{}, 'name'],
+    [{ name: null }, 'name'],
+    [{ name: '   ' }, 'name'],
+    [{ name: 42 }, 'name'],
+    [{ name: 'x'.repeat(5000) }, 'name'],
+    [{ name: 'ok', workspacePath: 42 }, 'workspacePath'],
+    [{ name: 'ok', workspacePath: 'p'.repeat(4097) }, 'workspacePath'],
+  ]
+
+  for (const [input, field] of cases) {
+    await assert.rejects(
+      () => store.createProject(input),
+      (error) => error.code === 'INVALID_FIELD' && error.details.field === field,
+      `expected INVALID_FIELD for ${field}`,
+    )
+  }
+
+  await assert.rejects(
+    () => store.createProject(null),
+    (error) => error.code === 'INVALID_FIELD' && error.details.field === 'input',
+  )
+
+  const projects = store.bootstrap().projects
+  assert.equal(projects.length, 0)
+  assert.equal(projects.some((project) => project.name === 'undefined' || project.name === 'null'), false)
+})
+
+test('createProject accepts name and workspacePath boundaries', async () => {
+  const store = makeStore()
+  const project = await store.createProject({
+    name: `  ${'n'.repeat(120)}  `,
+    workspacePath: 'p'.repeat(4096),
+  })
+
+  assert.equal(project.name, 'n'.repeat(120))
+  assert.equal(project.workspacePath.length, 4096)
+})
+
+test('renameProject validates name and leaves the project unchanged', async () => {
+  const store = makeStore()
+  const project = await store.createProject({ name: 'dsh-kanban' })
+
+  for (const name of [undefined, null, 42, '   ', 'x'.repeat(5000)]) {
+    await assert.rejects(
+      () => store.renameProject(project.id, name),
+      (error) => error.code === 'INVALID_FIELD' && error.details.field === 'name',
+    )
+  }
+  assert.equal(store.bootstrap().projects[0].name, 'dsh-kanban')
+
+  const renamed = await store.renameProject(project.id, '  DSH Kanban  ')
+  assert.equal(renamed.name, 'DSH Kanban')
+})

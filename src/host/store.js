@@ -17,10 +17,13 @@ const QUESTION_OPTIONS_MAX = 5
 const QUESTION_OPTION_LABEL_MAX = 200
 const QUESTION_OPTION_DETAIL_MAX = 1000
 const COMMENT_BODY_MAX = 10000
+const PROJECT_NAME_MAX = 120
+const PROJECT_WORKSPACE_PATH_MAX = 4096
 const ATTACHMENT_FILENAME_MAX = 255
 const ATTACHMENT_CONTENT_TYPE_MAX = 200
 const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024
 const ATTACHMENT_LIMIT = 50
+const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]/
 const QUESTION_DECISIONS = ['approve', 'reject']
 const TASK_PATCH_FIELDS = new Set([
   'title',
@@ -198,11 +201,31 @@ function validateCommentBody(value) {
   return body
 }
 
+function validateProjectName(value) {
+  if (typeof value !== 'string') throw invalidField('name', 'must be a string')
+  const name = value.trim()
+  if (name.length < 1 || name.length > PROJECT_NAME_MAX) {
+    throw invalidField('name', `must be 1-${PROJECT_NAME_MAX} characters after trimming`)
+  }
+  return name
+}
+
+function validateWorkspacePath(value) {
+  if (value === null || value === undefined) return null
+  if (typeof value !== 'string' || value.length > PROJECT_WORKSPACE_PATH_MAX) {
+    throw invalidField('workspacePath', `must be null or a string of at most ${PROJECT_WORKSPACE_PATH_MAX} characters`)
+  }
+  return value
+}
+
 function validateAttachmentFilename(value) {
   if (typeof value !== 'string') throw invalidField('filename', 'must be a string')
   const filename = value.trim()
   if (filename.length < 1 || filename.length > ATTACHMENT_FILENAME_MAX) {
     throw invalidField('filename', `must be 1-${ATTACHMENT_FILENAME_MAX} characters after trimming`)
+  }
+  if (CONTROL_CHARACTERS.test(filename)) {
+    throw invalidField('filename', 'must not contain control characters')
   }
   return filename
 }
@@ -292,13 +315,16 @@ export class KanbanStore {
     return { projects, tasks }
   }
 
-  createProject({ name, workspacePath = null }) {
+  createProject(input = {}) {
     return this.#run(async () => {
-      const base = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'project'
+      assertInputObject(input)
+      const name = validateProjectName(input.name)
+      const workspacePath = validateWorkspacePath(input.workspacePath)
+      const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'project'
       let id = base
       let suffix = 2
       while (this.#tables.projects.get(id)) id = `${base}-${suffix++}`
-      const prefixBase = String(name).toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 3) || 'TSK'
+      const prefixBase = name.toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 3) || 'TSK'
       let taskPrefix = prefixBase
       suffix = 2
       while ([...this.#tables.projects.entries()].some(([, project]) => project.taskPrefix === taskPrefix)) {
@@ -307,7 +333,7 @@ export class KanbanStore {
       const timestamp = this.#now()
       const project = {
         id,
-        name: String(name).trim(),
+        name,
         workspacePath,
         taskPrefix,
         labels: [],
@@ -324,7 +350,7 @@ export class KanbanStore {
   renameProject(id, name) {
     return this.#run(async () => {
       const project = this.#project(id)
-      const next = { ...project, name: String(name).trim(), updatedAt: this.#now() }
+      const next = { ...project, name: validateProjectName(name), updatedAt: this.#now() }
       await this.#tables.projects.put(id, next)
       return next
     })
@@ -628,15 +654,16 @@ export class KanbanStore {
 
   deleteAttachment(taskId, attachmentId) {
     return this.#run(async () => {
-      const task = this.#task(taskId)
-      const project = this.#project(task.projectId)
-      if (task.archivedAt) throw Object.assign(new Error('Task is archived'), { code: 'TASK_ARCHIVED' })
-      if (project.archivedAt) throw Object.assign(new Error('Project is archived'), { code: 'PROJECT_ARCHIVED' })
       const attachment = this.#tables.attachments.get(attachmentId)
       if (!attachment || attachment.taskId !== taskId) {
         throw Object.assign(new Error('Attachment not found'), { code: 'NOT_FOUND' })
       }
+      const task = this.#task(taskId)
+      const project = this.#project(task.projectId)
+      if (task.archivedAt) throw Object.assign(new Error('Task is archived'), { code: 'TASK_ARCHIVED' })
+      if (project.archivedAt) throw Object.assign(new Error('Project is archived'), { code: 'PROJECT_ARCHIVED' })
       await this.#tables.attachments.delete(attachmentId)
+      await this.#activity(taskId, [{ field: 'attachment', before: attachment.filename, after: null }])
     })
   }
 

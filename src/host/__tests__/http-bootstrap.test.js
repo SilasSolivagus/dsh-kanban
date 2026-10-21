@@ -129,7 +129,7 @@ test('project rename, archive, restore and delete routes dispatch with decoded i
   assert.deepEqual(restored.body, { id: 'p1', archivedAt: null })
 
   const deleted = await handleRequest(store, request('DELETE', '/kanban-api/projects/p1'))
-  assert.deepEqual(deleted, { status: 204, headers: {}, body: null })
+  assert.deepEqual(deleted, { status: 204, headers: { 'cache-control': 'no-store' }, body: null })
 
   assert.deepEqual(calls, [
     ['renameProject', 'p one', 'Renamed'],
@@ -145,7 +145,6 @@ test('store errors map to HTTP status codes', async () => {
     [{ code: 'PROJECT_NOT_FOUND', message: 'Project not found' }, 404],
     [{ code: 'PROJECT_NOT_EMPTY', message: 'Project still contains tasks', details: { taskCount: 2 } }, 409],
     [{ code: 'INVALID_FIELD', message: 'name: invalid', details: { field: 'name' } }, 400],
-    [{ code: 'SOMETHING_ELSE', message: 'boom' }, 400],
   ]
 
   for (const [error, status] of cases) {
@@ -156,6 +155,34 @@ test('store errors map to HTTP status codes', async () => {
     assert.deepEqual(response.body.error.details, error.details ?? {})
     assert.equal(response.headers['cache-control'], 'no-store')
   }
+})
+
+test('unknown store errors map to 500 INTERNAL_ERROR', async () => {
+  const coded = await handleRequest(
+    failingStore(Object.assign(new Error('boom'), { code: 'SOMETHING_ELSE' })),
+    request('PATCH', '/kanban-api/projects/p1', { name: 'x' }),
+  )
+  assert.equal(coded.status, 500)
+  assert.equal(coded.body.error.code, 'INTERNAL_ERROR')
+  assert.equal(coded.body.error.message, 'Internal server error')
+  assert.deepEqual(coded.body.error.details, {})
+
+  const uncoded = await handleRequest(failingStore(new TypeError('boom')), request('PATCH', '/kanban-api/projects/p1', { name: 'x' }))
+  assert.equal(uncoded.status, 500)
+  assert.equal(uncoded.body.error.code, 'INTERNAL_ERROR')
+})
+
+test('invalid project input through the HTTP route returns 400 and creates nothing', async () => {
+  const store = makeStore()
+  const bodies = [{}, { name: null }, { name: '   ' }, { name: 'x'.repeat(5000) }, { name: 'ok', workspacePath: 42 }]
+
+  for (const body of bodies) {
+    const response = await handleRequest(store, request('POST', '/kanban-api/projects', body))
+    assert.equal(response.status, 400)
+    assert.equal(response.body.error.code, 'INVALID_FIELD')
+    assert.ok(['name', 'workspacePath'].includes(response.body.error.details.field))
+  }
+  assert.equal(store.bootstrap().projects.length, 0)
 })
 
 test('unknown routes and unsupported methods return 404', async () => {
@@ -229,9 +256,39 @@ test('createHttpHandler streams attachment downloads', async () => {
 
   assert.equal(response.status, 200)
   assert.equal(response.headers['content-type'], 'text/plain')
-  assert.equal(response.headers['content-disposition'], 'attachment; filename="ab.txt"')
+  assert.equal(
+    response.headers['content-disposition'],
+    'attachment; filename="a_b.txt"; filename*=UTF-8\'\'a%22b.txt',
+  )
   assert.equal(response.headers['content-length'], '3')
   assert.equal(response.headers['cache-control'], 'no-store')
+  assert.equal(response.body(), 'abc')
+})
+
+test('createHttpHandler sends an ASCII fallback and RFC 5987 name for Unicode filenames', async () => {
+  const attachment = {
+    id: 'att-2',
+    filename: '看板.txt',
+    contentType: 'text/plain',
+    size: 3,
+    storageRef: { attachmentId: 'a2', name: 'f.txt', bytes: 3 },
+  }
+  const store = {
+    readFileStream: () => Readable.from([Buffer.from('abc')]),
+    readAttachment() {
+      return { attachment, stream: this.readFileStream(attachment.storageRef) }
+    },
+  }
+  const handler = createHttpHandler(store)
+  const response = makeResponse()
+
+  await handler({ method: 'GET', url: '/kanban-api/attachments/att-2' }, response)
+
+  assert.equal(response.status, 200)
+  assert.equal(
+    response.headers['content-disposition'],
+    'attachment; filename="__.txt"; filename*=UTF-8\'\'%E7%9C%8B%E6%9D%BF.txt',
+  )
   assert.equal(response.body(), 'abc')
 })
 
@@ -252,20 +309,29 @@ test('createHttpHandler returns a JSON 404 for unknown attachments', async () =>
   assert.equal(JSON.parse(response.body()).error.code, 'NOT_FOUND')
 })
 
-test('createHttpHandler rejects oversized request bodies with 413', async () => {
+test('createHttpHandler rejects oversized request bodies with 413 and destroys the request', async () => {
   const store = {
     createProject: async () => ({ id: 'p1' }),
   }
   const handler = createHttpHandler(store)
   const response = makeResponse()
-  const req = Readable.from([Buffer.alloc(30 * 1024 * 1024 + 1)])
-  req.method = 'POST'
-  req.url = '/kanban-api/projects'
+  let destroyed = false
+  const req = {
+    method: 'POST',
+    url: '/kanban-api/projects',
+    async *[Symbol.asyncIterator]() {
+      yield Buffer.alloc(30 * 1024 * 1024 + 1)
+    },
+    destroy() {
+      destroyed = true
+    },
+  }
 
   await handler(req, response)
 
   assert.equal(response.status, 413)
   assert.equal(JSON.parse(response.body()).error.code, 'ATTACHMENT_TOO_LARGE')
+  assert.equal(destroyed, true)
 })
 
 test('createHttpHandler rejects invalid JSON with 400', async () => {

@@ -1,4 +1,5 @@
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }
+const NO_STORE_HEADERS = { 'cache-control': 'no-store' }
 
 const STATUS_BY_CODE = {
   PROJECT_ARCHIVED: 403,
@@ -23,7 +24,7 @@ function ok(body, status = 200) {
 }
 
 function noContent() {
-  return { status: 204, headers: {}, body: null }
+  return { status: 204, headers: NO_STORE_HEADERS, body: null }
 }
 
 function fail(status, code, message, details = {}) {
@@ -31,8 +32,14 @@ function fail(status, code, message, details = {}) {
 }
 
 function toError(error) {
-  const status = STATUS_BY_CODE[error.code] ?? 400
-  return fail(status, error.code ?? 'INTERNAL_ERROR', error.message, error.details)
+  const code = error?.code
+  if (typeof code === 'string' && Object.hasOwn(STATUS_BY_CODE, code)) {
+    return fail(STATUS_BY_CODE[code], code, error.message, error.details)
+  }
+  if (typeof code === 'string' && code.startsWith('INVALID_')) {
+    return fail(400, code, error.message, error.details)
+  }
+  return fail(500, 'INTERNAL_ERROR', 'Internal server error')
 }
 
 export async function handleRequest(store, request) {
@@ -73,6 +80,20 @@ function sendJson(response, status, body) {
   response.end(JSON.stringify(body))
 }
 
+const RFC5987_ESCAPES = /['()*]/g
+
+function encodeRfc5987(value) {
+  return encodeURIComponent(value).replace(
+    RFC5987_ESCAPES,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
+}
+
+function contentDisposition(filename) {
+  const fallback = filename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_')
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeRfc5987(filename)}`
+}
+
 async function streamDownload(store, response, attachmentId) {
   let stream
   try {
@@ -80,7 +101,7 @@ async function streamDownload(store, response, attachmentId) {
     const attachment = result.attachment
     response.writeHead(200, {
       'content-type': attachment.contentType,
-      'content-disposition': `attachment; filename="${attachment.filename.replace(/"/g, '')}"`,
+      'content-disposition': contentDisposition(attachment.filename),
       'content-length': String(attachment.size),
       'cache-control': 'no-store',
     })
@@ -106,6 +127,7 @@ async function readJsonBody(request, response) {
       sendJson(response, 413, {
         error: { code: 'ATTACHMENT_TOO_LARGE', message: 'Request body is too large', details: {} },
       })
+      request.destroy?.()
       return { done: true }
     }
     chunks.push(chunk)
@@ -149,7 +171,7 @@ export function createHttpHandler(store) {
         response.destroy?.()
         return
       }
-      sendJson(response, 500, { error: { code: 'INTERNAL_ERROR', message: String(error), details: {} } })
+      sendJson(response, 500, { error: { code: 'INTERNAL_ERROR', message: 'Internal server error', details: {} } })
     }
   }
 }
