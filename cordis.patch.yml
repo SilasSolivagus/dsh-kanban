@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-kanban
+      name: '@local/dsh-kanban'
