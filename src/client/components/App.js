@@ -16,6 +16,7 @@ import {
 import { Board } from './Board.js'
 import { FiltersMenu } from './FiltersMenu.js'
 import { ProjectSwitcher } from './ProjectSwitcher.js'
+import { TaskDrawer } from './TaskDrawer.js'
 import {
   ArchivedTasksDialog,
   ArchiveProjectDialog,
@@ -270,8 +271,20 @@ export function App({ t }) {
 
   const openTask = useCallback((task) => {
     setSelectedTaskId(task.id)
-    showToast(tRef.current('taskDetailNextStep'), 'info')
-  }, [showToast])
+  }, [])
+
+  const closeTask = useCallback(() => {
+    setSelectedTaskId(null)
+  }, [])
+
+  const refreshAfterTaskChange = useCallback(() => {
+    void load({ silent: true })
+  }, [load])
+
+  const closeAfterTaskArchived = useCallback(() => {
+    setSelectedTaskId(null)
+    void load({ silent: true })
+  }, [load])
 
   const filterByProject = useCallback((projectId) => {
     const next = filters.projectId === projectId ? '' : projectId
@@ -535,6 +548,16 @@ export function App({ t }) {
       >{toast.message}</div> : null}
 
       {dialogs.map(renderDialog)}
+
+      {selectedTaskId ? <TaskDrawer
+        key={selectedTaskId}
+        taskId={selectedTaskId}
+        projects={projects}
+        onClose={closeTask}
+        onChanged={refreshAfterTaskChange}
+        onArchived={closeAfterTaskArchived}
+        t={t}
+      /> : null}
     </div>
   </>
 }
