@@ -42,28 +42,96 @@ function toError(error) {
   return fail(500, 'INTERNAL_ERROR', 'Internal server error')
 }
 
+function decodePathSegment(segment) {
+  try {
+    return decodeURIComponent(segment)
+  } catch {
+    throw Object.assign(new Error('Malformed URL encoding'), { code: 'INVALID_PATH' })
+  }
+}
+
 export async function handleRequest(store, request) {
-  const { method, pathname, body } = request
+  const { method, pathname, body, searchParams = new URLSearchParams() } = request
+  const payload = body ?? {}
   try {
     if (method === 'GET' && pathname === '/kanban-api/bootstrap') return ok(store.bootstrap())
     if (method === 'POST' && pathname === '/kanban-api/projects') {
-      return ok(await store.createProject(body), 201)
+      return ok(await store.createProject(payload), 201)
     }
 
     const projectAction = /^\/kanban-api\/projects\/([^/]+)\/(archive|restore)$/.exec(pathname)
     if (projectAction && method === 'POST') {
-      const id = decodeURIComponent(projectAction[1])
+      const id = decodePathSegment(projectAction[1])
       return ok(await (projectAction[2] === 'archive' ? store.archiveProject(id) : store.restoreProject(id)))
     }
 
     const projectMatch = /^\/kanban-api\/projects\/([^/]+)$/.exec(pathname)
     if (projectMatch) {
-      const id = decodeURIComponent(projectMatch[1])
-      if (method === 'PATCH') return ok(await store.renameProject(id, body?.name))
+      const id = decodePathSegment(projectMatch[1])
+      if (method === 'PATCH') return ok(await store.renameProject(id, payload.name))
       if (method === 'DELETE') {
         await store.deleteProject(id)
         return noContent()
       }
+    }
+
+    if (method === 'POST' && pathname === '/kanban-api/tasks') {
+      return ok(await store.createTask(payload), 201)
+    }
+
+    if (method === 'GET' && pathname === '/kanban-api/archived-tasks') {
+      return ok({ tasks: store.listArchivedTasks(searchParams.get('projectId') ?? undefined) })
+    }
+
+    const taskMatch = /^\/kanban-api\/tasks\/([^/]+)$/.exec(pathname)
+    if (taskMatch) {
+      const id = decodePathSegment(taskMatch[1])
+      if (method === 'GET') return ok(store.getTaskDetail(id))
+      if (method === 'PATCH') return ok(await store.updateTask(id, payload))
+      if (method === 'DELETE') {
+        await store.deleteTask(id, payload)
+        return noContent()
+      }
+    }
+
+    const taskAction = /^\/kanban-api\/tasks\/([^/]+)\/(archive|restore|question|answer)$/.exec(pathname)
+    if (taskAction && method === 'POST') {
+      const id = decodePathSegment(taskAction[1])
+      if (taskAction[2] === 'archive') return ok(await store.archiveTask(id, payload))
+      if (taskAction[2] === 'restore') return ok(await store.restoreTask(id, payload))
+      if (taskAction[2] === 'question') return ok(await store.askQuestion(id, payload))
+      if (taskAction[2] === 'answer') return ok(await store.answerQuestion(id, payload))
+    }
+
+    const activityMatch = /^\/kanban-api\/tasks\/([^/]+)\/activity$/.exec(pathname)
+    if (activityMatch && method === 'GET') {
+      return ok(store.getTaskDetail(decodePathSegment(activityMatch[1])).activity)
+    }
+
+    const commentMatch = /^\/kanban-api\/tasks\/([^/]+)\/comments$/.exec(pathname)
+    if (commentMatch) {
+      const id = decodePathSegment(commentMatch[1])
+      if (method === 'GET') return ok(store.getTaskDetail(id).comments)
+      if (method === 'POST') return ok(await store.addComment(id, payload.body), 201)
+    }
+
+    const commentDelete = /^\/kanban-api\/tasks\/([^/]+)\/comments\/([^/]+)$/.exec(pathname)
+    if (commentDelete && method === 'DELETE') {
+      await store.deleteComment(decodePathSegment(commentDelete[1]), decodePathSegment(commentDelete[2]))
+      return noContent()
+    }
+
+    const attachmentMatch = /^\/kanban-api\/tasks\/([^/]+)\/attachments$/.exec(pathname)
+    if (attachmentMatch) {
+      const id = decodePathSegment(attachmentMatch[1])
+      if (method === 'GET') return ok(store.getTaskDetail(id).attachments)
+      if (method === 'POST') return ok(await store.addAttachment(id, payload), 201)
+    }
+
+    const attachmentDelete = /^\/kanban-api\/tasks\/([^/]+)\/attachments\/([^/]+)$/.exec(pathname)
+    if (attachmentDelete && method === 'DELETE') {
+      await store.deleteAttachment(decodePathSegment(attachmentDelete[1]), decodePathSegment(attachmentDelete[2]))
+      return noContent()
     }
 
     return fail(404, 'NOT_FOUND', 'Not found')
@@ -152,7 +220,7 @@ export function createHttpHandler(store) {
       }
 
       let body = null
-      if (request.method !== 'GET' && request.method !== 'DELETE') {
+      if (request.method !== 'GET') {
         const read = await readJsonBody(request, response)
         if (read.done) return
         body = read.body
