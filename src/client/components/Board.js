@@ -42,11 +42,12 @@ export function Board({
     const task = dragging
     setDragging(null)
     setOver(null)
-    if (!task || beforeTaskId === task.id) return
+    if (readOnly || !task || beforeTaskId === task.id) return
     onDropTask?.(task, columnId, beforeTaskId ?? null)
   }
 
   const handleDragStart = (task) => {
+    if (readOnly) return
     setDragging(task)
     setOver(null)
   }
@@ -57,7 +58,7 @@ export function Board({
   }
 
   const handleColumnDragOver = (event, columnId) => {
-    if (!dragging) return
+    if (readOnly || !dragging) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
     setOver((current) => current?.columnId === columnId && current?.beforeTaskId === null
@@ -71,13 +72,14 @@ export function Board({
   }
 
   const handleColumnDrop = (event, columnId) => {
+    if (readOnly) return
     event.preventDefault()
     const beforeTaskId = over?.columnId === columnId ? over.beforeTaskId : null
     commitDrop(columnId, beforeTaskId)
   }
 
   const handleCardDragOver = (event, columnId, taskId) => {
-    if (!dragging) return
+    if (readOnly || !dragging) return
     event.preventDefault()
     event.stopPropagation()
     event.dataTransfer.dropEffect = 'move'
@@ -85,12 +87,13 @@ export function Board({
   }
 
   const handleCardDrop = (event, columnId, taskId) => {
+    if (readOnly) return
     event.preventDefault()
     event.stopPropagation()
     commitDrop(columnId, taskId)
   }
 
-  return <div className="dkb-columns">
+  return <div className="dkb-columns" aria-readonly={readOnly || undefined}>
     {COLUMNS.map((column) => {
       const check = dragging ? canDrop(dragging, column.id) : null
       return <Column

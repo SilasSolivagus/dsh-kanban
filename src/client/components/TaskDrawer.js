@@ -479,6 +479,7 @@ export function TaskDrawer({ taskId, projects = [], onClose, onChanged, onArchiv
       aria-modal="true"
       aria-labelledby={titleId}
       aria-busy={busy || undefined}
+      aria-readonly={readOnly || undefined}
       ref={drawerRef}
     >
       <header className="dkb-drawer-head">

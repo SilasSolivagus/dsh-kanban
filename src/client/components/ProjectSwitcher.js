@@ -28,8 +28,8 @@ function MenuItem({ children, count, selected, onSelect, role = 'menuitemradio' 
 
 export function ProjectSwitcher({
   projects = [],
+  archivedProjects = [],
   selectedId,
-  archivedCount = 0,
   onSelect,
   onCreate,
   onManage,
@@ -42,7 +42,8 @@ export function ProjectSwitcher({
   const triggerRef = useRef(null)
   const menuRef = useRef(null)
 
-  const selectedProject = projects.find((project) => project.id === selectedId) ?? null
+  const selectedProject = [...projects, ...archivedProjects].find((project) => project.id === selectedId) ?? null
+  const selectedArchived = Boolean(selectedProject?.archivedAt)
   const label = selectedProject?.name ?? t('allProjects')
   const totalTasks = projects.reduce((sum, project) => sum + (project.taskCount ?? 0), 0)
 
@@ -79,7 +80,7 @@ export function ProjectSwitcher({
     <button
       type="button"
       ref={triggerRef}
-      className="dkb-project-trigger"
+      className={`dkb-project-trigger${selectedArchived ? ' dkb-project-trigger-archived' : ''}`}
       aria-haspopup="menu"
       aria-expanded={open}
       aria-label={`${t('menuLabel')}: ${label}`}
@@ -87,6 +88,7 @@ export function ProjectSwitcher({
     >
       <span className="dkb-project-mark" aria-hidden="true" />
       <span className="dkb-project-trigger-label">{label}</span>
+      {selectedArchived ? <span className="dkb-badge">{t('archived')}</span> : null}
       <span className="dkb-project-trigger-chevron" aria-hidden="true"><ChevronDown /></span>
     </button>
     {open ? <div className="dkb-menu" role="menu" aria-label={t('menuLabel')} ref={menuRef}>
@@ -108,12 +110,26 @@ export function ProjectSwitcher({
           {project.name}
         </MenuItem>
       ))}
+      {archivedProjects.length > 0 ? <>
+        <div className="dkb-menu-divider" role="separator" />
+        <div className="dkb-menu-section" role="presentation">{t('archivedProjects')}</div>
+        {archivedProjects.map((project) => (
+          <MenuItem
+            key={project.id}
+            selected={selectedId === project.id}
+            count={t('taskCount', { count: project.taskCount ?? 0 })}
+            onSelect={() => runAction(() => onSelect?.(project.id))}
+          >
+            {project.name}
+          </MenuItem>
+        ))}
+      </> : null}
       <div className="dkb-menu-divider" role="separator" />
       <MenuItem role="menuitem" onSelect={() => runAction(onCreate)}>{t('createProject')}</MenuItem>
       <MenuItem role="menuitem" onSelect={() => runAction(onManage)}>{t('manageProjects')}</MenuItem>
       <MenuItem
         role="menuitem"
-        count={archivedCount > 0 ? String(archivedCount) : undefined}
+        count={archivedProjects.length > 0 ? String(archivedProjects.length) : undefined}
         onSelect={() => runAction(onArchivedProjects)}
       >
         {t('archivedProjects')}

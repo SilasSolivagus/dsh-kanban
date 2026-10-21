@@ -510,15 +510,31 @@ export function ManageProjectsDialog({
   </Modal>
 }
 
-export function ArchivedTasksDialog({ t, layer, projectId, projects = [], onClose, loadArchivedTasks }) {
+export function ArchivedTasksDialog({
+  t,
+  layer,
+  projectId,
+  projects = [],
+  onClose,
+  loadArchivedTasks,
+  onOpenTask,
+  onRestoreTask,
+  onDeleteTask,
+}) {
   const [tasks, setTasks] = useState(null)
   const [error, setError] = useState('')
+  const [actionError, setActionError] = useState('')
   const [reloadToken, setReloadToken] = useState(0)
+  const [search, setSearch] = useState('')
+  const [pending, setPending] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+  const mountedRef = useMountedRef()
 
   useEffect(() => {
     let cancelled = false
     setTasks(null)
     setError('')
+    setActionError('')
     Promise.resolve()
       .then(() => loadArchivedTasks(projectId ?? undefined))
       .then((list) => {
@@ -530,21 +546,149 @@ export function ArchivedTasksDialog({ t, layer, projectId, projects = [], onClos
     return () => { cancelled = true }
   }, [loadArchivedTasks, projectId, reloadToken, t])
 
-  const scopedProject = projectId ? projects.find((project) => project.id === projectId) ?? null : null
-  const projectName = (id) => projects.find((project) => project.id === id)?.name ?? ''
+  const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects])
+  const scopedProject = projectId ? projectById.get(projectId) ?? null : null
+  const query = search.trim().toLowerCase()
 
-  return <Modal title={t('archivedTasks')} t={t} onClose={onClose} layer={layer} wide>
-    {scopedProject ? <p className="dkb-dialog-text dkb-muted">{t('archivedTasksFor', { project: scopedProject.name })}</p> : null}
+  const groups = useMemo(() => {
+    const list = Array.isArray(tasks) ? tasks : []
+    const matches = !query
+      ? list
+      : list.filter((task) => `${task.identifier ?? ''} ${task.title ?? ''}`.toLowerCase().includes(query))
+    const grouped = new Map()
+    for (const task of matches) {
+      if (!grouped.has(task.projectId)) grouped.set(task.projectId, [])
+      grouped.get(task.projectId).push(task)
+    }
+    const projectOrder = new Map(projects.map((project, index) => [project.id, index]))
+    const rank = (id) => projectOrder.has(id) ? projectOrder.get(id) : Number.MAX_SAFE_INTEGER
+    return [...grouped.entries()]
+      .sort(([left], [right]) => {
+        const delta = rank(left) - rank(right)
+        return delta !== 0 ? delta : String(left).localeCompare(String(right))
+      })
+      .map(([groupProjectId, groupTasks]) => {
+        const project = projectById.get(groupProjectId) ?? null
+        return {
+          id: groupProjectId,
+          name: project?.name ?? t('unknownProject'),
+          archived: Boolean(project?.archivedAt),
+          tasks: [...groupTasks].sort((left, right) => {
+            const archivedDelta = String(right.archivedAt ?? '').localeCompare(String(left.archivedAt ?? ''))
+            return archivedDelta !== 0
+              ? archivedDelta
+              : String(left.identifier ?? '').localeCompare(String(right.identifier ?? ''))
+          }),
+        }
+      })
+  }, [tasks, query, projects, projectById, t])
+
+  const matchedCount = groups.reduce((sum, group) => sum + group.tasks.length, 0)
+
+  const runAction = async (task, action) => {
+    if (!task || busyId) return
+    setBusyId(task.id)
+    setActionError('')
+    try {
+      if (action === 'restore') await onRestoreTask?.(task)
+      else await onDeleteTask?.(task)
+      setPending(null)
+      setReloadToken((value) => value + 1)
+    } catch (failure) {
+      if (mountedRef.current) setActionError(taskErrorText(failure, t))
+    } finally {
+      if (mountedRef.current) setBusyId(null)
+    }
+  }
+
+  return <Modal title={t('archivedTasks')} t={t} onClose={onClose} layer={layer} wide busy={Boolean(busyId)}>
+    <div className="dkb-archive-toolbar">
+      <input
+        className="dkb-input"
+        data-autofocus="true"
+        type="search"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder={t('searchArchivedTasks')}
+        aria-label={t('searchArchivedTasks')}
+        disabled={tasks === null}
+      />
+      {tasks !== null ? <span className="dkb-archive-count">{t('taskCount', { count: matchedCount })}</span> : null}
+    </div>
+    {scopedProject ? <p className="dkb-dialog-text dkb-muted">
+      {t('archivedTasksFor', { project: scopedProject.name })}
+      {scopedProject.archivedAt ? <span className="dkb-badge dkb-archive-scope-badge">{t('archived')}</span> : null}
+    </p> : null}
     {error ? <ErrorBanner>{error}</ErrorBanner> : null}
+    {actionError ? <ErrorBanner>{actionError}</ErrorBanner> : null}
     {tasks === null && !error ? <p className="dkb-list-empty">{t('loading')}</p> : null}
     {tasks !== null && tasks.length === 0 ? <p className="dkb-list-empty">{t('noArchivedTasks')}</p> : null}
-    {tasks !== null && tasks.length > 0 ? <ul className="dkb-archive-list">
-      {tasks.map((task) => <li className="dkb-archive-row" key={task.id}>
-        <span className="dkb-archive-identifier">{task.identifier}</span>
-        <span className="dkb-archive-title">{task.title}</span>
-        {projectId ? null : <span className="dkb-archive-project">{projectName(task.projectId)}</span>}
-      </li>)}
-    </ul> : null}
+    {tasks !== null && tasks.length > 0 && groups.length === 0 ? <p className="dkb-list-empty">{t('noArchivedTasksMatch')}</p> : null}
+    {groups.map((group) => <section className="dkb-archive-group" key={group.id} aria-label={group.name}>
+      <header className="dkb-archive-group-head">
+        <h3 className="dkb-archive-group-title">{group.name}</h3>
+        {group.archived ? <span className="dkb-badge">{t('archived')}</span> : null}
+        <span className="dkb-archive-group-count">{t('taskCount', { count: group.tasks.length })}</span>
+      </header>
+      <ul className="dkb-archive-list">
+        {group.tasks.map((task) => {
+          const confirming = pending?.task.id === task.id ? pending.action : null
+          const locked = group.archived
+          const busyRow = busyId === task.id
+          const lockedTitle = locked ? t('restoreProjectFirst') : undefined
+          return <li className="dkb-archive-row" key={task.id}>
+            <button
+              type="button"
+              className="dkb-archive-open"
+              onClick={() => onOpenTask?.(task)}
+              title={t('openTask')}
+            >
+              <span className="dkb-archive-identifier">{task.identifier}</span>
+              <span className="dkb-archive-title">{task.title}</span>
+            </button>
+            {confirming ? null : <span className="dkb-archive-row-actions">
+              <button
+                type="button"
+                className="dkb-button dkb-button-small"
+                onClick={() => setPending({ task, action: 'restore' })}
+                disabled={Boolean(busyId) || locked}
+                title={lockedTitle}
+              >{t('restoreTask')}</button>
+              <button
+                type="button"
+                className="dkb-button dkb-button-small dkb-button-danger"
+                onClick={() => setPending({ task, action: 'delete' })}
+                disabled={Boolean(busyId) || locked}
+                title={lockedTitle}
+              >{t('deleteTaskPermanently')}</button>
+            </span>}
+            {confirming ? <div className="dkb-archive-confirm" role="group" aria-label={confirming === 'delete' ? t('deleteTaskPermanently') : t('restoreTask')}>
+              <p className="dkb-archive-confirm-text">
+                {confirming === 'delete' ? t('deleteTaskConfirm') : t('restoreTaskConfirm')}
+              </p>
+              <div className="dkb-archive-confirm-actions">
+                <button
+                  type="button"
+                  className="dkb-button dkb-button-small"
+                  onClick={() => setPending(null)}
+                  disabled={busyRow}
+                >{t('cancel')}</button>
+                <button
+                  type="button"
+                  className={confirming === 'delete'
+                    ? 'dkb-button dkb-button-small dkb-button-danger'
+                    : 'dkb-button dkb-button-small dkb-button-primary'}
+                  onClick={() => { void runAction(task, confirming) }}
+                  disabled={busyRow}
+                >{busyRow
+                    ? t('submitting')
+                    : confirming === 'delete' ? t('delete') : t('restore')}</button>
+              </div>
+            </div> : null}
+          </li>
+        })}
+      </ul>
+    </section>)}
     <div className="dkb-modal-actions">
       {error ? <button type="button" className="dkb-button" onClick={() => setReloadToken((value) => value + 1)}>{t('retry')}</button> : null}
       <button type="button" className="dkb-button dkb-button-primary" onClick={onClose}>{t('close')}</button>

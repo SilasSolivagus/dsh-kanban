@@ -25,6 +25,7 @@ import {
   DeleteProjectDialog,
   ManageProjectsDialog,
   RenameProjectDialog,
+  projectErrorText,
   taskErrorText,
 } from './dialogs.js'
 import styles from '../styles.css'
@@ -73,6 +74,7 @@ export function App({ t }) {
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [restoringProject, setRestoringProject] = useState(false)
   const [error, setError] = useState(null)
   const [dialogs, setDialogs] = useState([])
 
@@ -118,8 +120,7 @@ export function App({ t }) {
       setSelectedProjectId((current) => {
         if (selectProjectId !== undefined) return selectProjectId
         if (current === ALL_PROJECTS) return current
-        const match = nextProjects.find((project) => project.id === current)
-        return match && !match.archivedAt ? current : ALL_PROJECTS
+        return nextProjects.some((project) => project.id === current) ? current : ALL_PROJECTS
       })
     } catch (failure) {
       setError(tRef.current('loadError', { message: failure?.message || tRef.current('actionFailed') }))
@@ -135,14 +136,19 @@ export function App({ t }) {
 
   const activeProjects = useMemo(() => projects.filter((project) => !project.archivedAt), [projects])
   const archivedProjects = useMemo(() => projects.filter((project) => project.archivedAt), [projects])
-  const selectedProject = activeProjects.find((project) => project.id === selectedProjectId) ?? null
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null
+  const selectedProjectArchived = Boolean(selectedProject?.archivedAt)
 
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects])
   const activeProjectIds = useMemo(() => new Set(activeProjects.map((project) => project.id)), [activeProjects])
 
   const boardTasks = useMemo(() => {
-    return tasks.filter((task) => activeProjectIds.has(task.projectId) && COLUMN_ID_SET.has(task.column))
-  }, [tasks, activeProjectIds])
+    const activeOnly = selectedProjectId === ALL_PROJECTS
+    return tasks.filter((task) => {
+      if (!COLUMN_ID_SET.has(task.column)) return false
+      return activeOnly ? activeProjectIds.has(task.projectId) : task.projectId === selectedProjectId
+    })
+  }, [tasks, activeProjectIds, selectedProjectId])
 
   const filterOptions = useMemo(() => {
     const priorities = new Set()
@@ -245,11 +251,24 @@ export function App({ t }) {
     await load({ silent: true })
   }, [closeDialog, load])
 
-  const restoreProject = useCallback(async (project) => {
+  const restoreProject = useCallback(async (project, { select = false } = {}) => {
     const updated = await api.restoreProject(project.id)
     setProjects((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item))
-    await load({ silent: true })
-  }, [load])
+    const keepSelected = select || selectedProjectId === project.id
+    await load({ silent: true, ...(keepSelected ? { selectProjectId: updated.id } : {}) })
+  }, [load, selectedProjectId])
+
+  const restoreSelectedProject = useCallback(async () => {
+    if (!selectedProject || !selectedProjectArchived) return
+    setRestoringProject(true)
+    try {
+      await restoreProject(selectedProject, { select: true })
+    } catch (failure) {
+      showToast(projectErrorText(failure, tRef.current))
+    } finally {
+      setRestoringProject(false)
+    }
+  }, [restoreProject, selectedProject, selectedProjectArchived, showToast])
 
   const deleteProject = useCallback(async (project, key) => {
     await api.deleteProject(project.id)
@@ -346,6 +365,16 @@ export function App({ t }) {
     return api.archivedTasks(projectId).then((data) => data?.tasks ?? [])
   }, [])
 
+  const restoreArchivedTask = useCallback(async (task) => {
+    await api.restoreTask(task.id, { version: task.version })
+    await load({ silent: true })
+  }, [load])
+
+  const deleteArchivedTask = useCallback(async (task) => {
+    await api.deleteTask(task.id, { version: task.version })
+    await load({ silent: true })
+  }, [load])
+
   const refresh = () => { void load({ silent: true }) }
 
   const renderDialog = (dialog, layer) => {
@@ -427,6 +456,12 @@ export function App({ t }) {
         projects={projects}
         onClose={close}
         loadArchivedTasks={loadArchivedTasks}
+        onRestoreTask={restoreArchivedTask}
+        onDeleteTask={deleteArchivedTask}
+        onOpenTask={(task) => {
+          close()
+          openTask(task)
+        }}
       />
     }
     return null
@@ -438,7 +473,7 @@ export function App({ t }) {
       <header className="dkb-header">
         <ProjectSwitcher
           projects={activeProjects}
-          archivedCount={archivedProjects.length}
+          archivedProjects={archivedProjects}
           selectedId={selectedProjectId}
           onSelect={selectProject}
           onCreate={() => openDialog({ type: 'create' })}
@@ -493,6 +528,20 @@ export function App({ t }) {
         </button>
       </div> : null}
 
+      {selectedProjectArchived ? <div className="dkb-banner dkb-banner-readonly" role="status">
+        <span className="dkb-badge dkb-badge-archived">{t('archived')}</span>
+        <span className="dkb-banner-text">
+          {t('archivedProjectBanner', { name: selectedProject?.name ?? '' })}
+        </span>
+        <button
+          type="button"
+          className="dkb-button dkb-button-small dkb-button-primary"
+          onClick={() => { void restoreSelectedProject() }}
+          disabled={restoringProject}
+          aria-busy={restoringProject || undefined}
+        >{restoringProject ? t('submitting') : t('restoreProject')}</button>
+      </div> : null}
+
       <main className="dkb-main">
         {loading && projects.length === 0 ? <div className="dkb-state"><p className="dkb-muted">{t('loading')}</p></div> : null}
         {!loading && error && projects.length === 0 ? <div className="dkb-state">
@@ -509,10 +558,14 @@ export function App({ t }) {
         {projects.length > 0 ? <section className="dkb-board" aria-label={t('nav')}>
           <div className="dkb-board-head">
             <div>
-              <h2 className="dkb-board-title">{selectedProject?.name ?? t('allProjects')}</h2>
+              <h2 className="dkb-board-title">
+                <span>{selectedProject?.name ?? t('allProjects')}</span>
+                {selectedProjectArchived ? <span className="dkb-badge dkb-badge-archived">{t('archived')}</span> : null}
+              </h2>
               <p className="dkb-board-meta">
                 {t('taskCount', { count: visibleTasks.length })}
                 {filterCount > 0 ? ` · ${t('filtersActive', { count: filterCount })}` : ''}
+                {selectedProjectArchived ? ` · ${t('readOnly')}` : ''}
               </p>
             </div>
           </div>
