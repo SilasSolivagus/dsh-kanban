@@ -107,6 +107,7 @@ export function Board({
         now={now}
         isOver={over?.columnId === column.id}
         dropInvalid={Boolean(dragging && over?.columnId === column.id && check && !check.ok)}
+        dropBeforeTaskId={over?.columnId === column.id ? over.beforeTaskId : null}
         onToggle={() => onToggleColumn?.(column.id)}
         onAdd={() => onAddTask?.(column.id)}
         onOpenTask={onOpenTask}

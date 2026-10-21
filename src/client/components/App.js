@@ -5,11 +5,11 @@ import { api } from '../api.js'
 import {
   DEFAULT_STATUS_BY_COLUMN,
   activeFilterCount,
-  computeDropSortOrder,
   matchesFilters,
   parseCollapsedColumns,
+  planDropSortOrder,
+  reconcileProjectFilter,
   serializeCollapsedColumns,
-  sortByOrder,
   statusForColumn,
   toggleCollapsedColumn,
 } from '../board-state.js'
@@ -208,6 +208,9 @@ export function App({ t }) {
   const changeFilter = useCallback((key, value) => {
     if (!Object.hasOwn(EMPTY_FILTERS, key)) return
     setFilters((current) => ({ ...current, [key]: value }))
+    if (key === 'projectId') {
+      setSelectedProjectId((current) => reconcileProjectFilter(current, value, ALL_PROJECTS))
+    }
   }, [])
 
   const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), [])
@@ -271,8 +274,10 @@ export function App({ t }) {
   }, [showToast])
 
   const filterByProject = useCallback((projectId) => {
-    setFilters((current) => ({ ...current, projectId: current.projectId === projectId ? '' : projectId }))
-  }, [])
+    const next = filters.projectId === projectId ? '' : projectId
+    setFilters((current) => ({ ...current, projectId: next }))
+    setSelectedProjectId((current) => reconcileProjectFilter(current, next, ALL_PROJECTS))
+  }, [filters.projectId])
 
   const filterByPriority = useCallback((priority) => {
     setFilters((current) => ({ ...current, priority: current.priority === priority ? '' : priority }))
@@ -289,14 +294,24 @@ export function App({ t }) {
       showToast(tRef.current('dropRejected'))
       return
     }
-    const columnTasks = sortByOrder(tasks.filter((item) => (
+    const columnTasks = tasks.filter((item) => (
       item.id !== task.id
       && item.column === columnId
       && activeProjectIds.has(item.projectId)
-    )))
-    const sortOrder = computeDropSortOrder(columnTasks, beforeTaskId)
+    ))
+    const plan = planDropSortOrder(columnTasks, beforeTaskId, task)
     try {
-      await api.updateTask(task.id, { version: task.version, status, sortOrder })
+      if (plan.sortOrder !== null) {
+        await api.updateTask(task.id, { version: task.version, status, sortOrder: plan.sortOrder })
+      } else {
+        for (const update of plan.updates) {
+          await api.updateTask(update.id, {
+            version: update.version,
+            sortOrder: update.sortOrder,
+            ...(update.id === task.id ? { status } : {}),
+          })
+        }
+      }
       await load({ silent: true })
     } catch (failure) {
       showToast(taskErrorText(failure, tRef.current))

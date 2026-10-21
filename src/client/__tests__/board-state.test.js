@@ -5,6 +5,8 @@ import {
   activeFilterCount,
   computeDropSortOrder,
   matchesFilters,
+  planDropSortOrder,
+  reconcileProjectFilter,
   parseCollapsedColumns,
   serializeCollapsedColumns,
   sortByOrder,
@@ -39,6 +41,36 @@ test('computeDropSortOrder appends, prepends and finds a midpoint', () => {
   assert.equal(computeDropSortOrder(column, 'missing'), 4000)
 })
 
+test('planDropSortOrder keeps the fast path for append and before', () => {
+  const column = [task('a', 1000), task('b', 2000), task('c', 3000)]
+  const dragged = task('x', 2500, { version: 7 })
+  assert.deepEqual(planDropSortOrder(column, null, dragged), { sortOrder: 4000, updates: [] })
+  assert.deepEqual(planDropSortOrder(column, 'b', dragged), { sortOrder: 1500, updates: [] })
+  assert.deepEqual(planDropSortOrder([], null, dragged), { sortOrder: 1000, updates: [] })
+})
+
+test('equal neighbour sortOrders trigger a deterministic rebalance', () => {
+  const column = [task('a', 1000, { version: 2 }), task('b', 1000, { version: 3 })]
+  const dragged = task('x', 2000, { version: 5 })
+  assert.equal(computeDropSortOrder(column, 'b'), null)
+  const plan = planDropSortOrder(column, 'b', dragged)
+  assert.equal(plan.sortOrder, null)
+  assert.deepEqual(plan.updates, [
+    { id: 'x', version: 5, sortOrder: 2000 },
+    { id: 'b', version: 3, sortOrder: 3000 },
+  ])
+  const allMoved = planDropSortOrder(
+    [task('a', 1, { version: 2 }), task('b', 1, { version: 3 })],
+    'b',
+    task('x', 5000, { version: 5 }),
+  )
+  assert.deepEqual(allMoved.updates, [
+    { id: 'a', version: 2, sortOrder: 1000 },
+    { id: 'x', version: 5, sortOrder: 2000 },
+    { id: 'b', version: 3, sortOrder: 3000 },
+  ])
+})
+
 test('statusForColumn maps columns and preserves a same-column status', () => {
   assert.equal(statusForColumn('backlog', 'todo'), 'todo')
   assert.equal(statusForColumn('backlog', 'in_progress'), 'backlog')
@@ -62,6 +94,13 @@ test('collapsed column state round-trips through localStorage JSON', () => {
   assert.deepEqual(parseCollapsedColumns(JSON.stringify(['bogus', 'done'])), { done: true })
   assert.deepEqual(toggleCollapsedColumn(collapsed, 'backlog'), { needs: true })
   assert.deepEqual(toggleCollapsedColumn(collapsed, 'running'), { backlog: true, needs: true, running: true })
+})
+
+test('reconcileProjectFilter clears a conflicting selected project', () => {
+  assert.equal(reconcileProjectFilter('__all__', 'p1'), '__all__')
+  assert.equal(reconcileProjectFilter('p1', 'p1'), 'p1')
+  assert.equal(reconcileProjectFilter('p1', 'p2'), '__all__')
+  assert.equal(reconcileProjectFilter('p2', ''), 'p2')
 })
 
 test('matchesFilters applies project, priority, label and assignee filters', () => {

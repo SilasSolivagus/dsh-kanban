@@ -20,6 +20,8 @@ export function sortByOrder(tasks) {
 /**
  * Order for a task dropped into a column, excluding the dragged task.
  * `beforeTaskId` is the card the task is inserted before, or null to append.
+ * Returns null when no strictly ordered value fits between the neighbours and
+ * the column must be rebalanced with `planDropSortOrder`.
  */
 export function computeDropSortOrder(columnTasks, beforeTaskId) {
   const ordered = sortByOrder(columnTasks)
@@ -29,9 +31,50 @@ export function computeDropSortOrder(columnTasks, beforeTaskId) {
   if (index > 0) {
     const previous = ordered[index - 1].sortOrder
     const next = ordered[index].sortOrder
-    return previous + (next - previous) / 2
+    const candidate = previous + (next - previous) / 2
+    if (Number.isFinite(candidate) && candidate > previous && candidate < next) return candidate
+    return null
   }
-  return ordered[ordered.length - 1].sortOrder + 1000
+  const candidate = ordered[ordered.length - 1].sortOrder + 1000
+  return Number.isFinite(candidate) ? candidate : null
+}
+
+/**
+ * Full drop plan for a target column. The fast path only patches the dragged
+ * task; equal/invalid neighbour gaps rebalance the whole column to spaced
+ * sortOrders (1000, 2000, ...) and return every task that must be PATCHed,
+ * including the dragged task so its status is applied in the same pass.
+ */
+export function planDropSortOrder(columnTasks, beforeTaskId, draggedTask, gap = 1000) {
+  const sortOrder = computeDropSortOrder(columnTasks, beforeTaskId)
+  if (sortOrder !== null) return { sortOrder, updates: [] }
+  const ordered = sortByOrder(columnTasks).filter((task) => task.id !== draggedTask?.id)
+  const index = beforeTaskId ? ordered.findIndex((task) => task.id === beforeTaskId) : -1
+  const insertAt = index === -1 ? ordered.length : index
+  const fullOrder = [...ordered]
+  fullOrder.splice(insertAt, 0, draggedTask)
+  const updates = fullOrder
+    .map((task, position) => ({
+      id: task.id,
+      version: task.version,
+      sortOrder: (position + 1) * gap,
+      original: task.sortOrder,
+    }))
+    .filter((entry) => entry.id === draggedTask.id || entry.sortOrder !== entry.original)
+    .map(({ id, version, sortOrder: value }) => ({ id, version, sortOrder: value }))
+  return { sortOrder: null, updates }
+}
+
+/**
+ * A board filtered to one project must not also be scoped to a different
+ * selected project. Choosing a conflicting project filter falls back to All
+ * projects so the filter can never produce an unexplained empty board.
+ */
+export function reconcileProjectFilter(selectedProjectId, filterProjectId, allProjectsId = '__all__') {
+  if (filterProjectId && selectedProjectId !== allProjectsId && filterProjectId !== selectedProjectId) {
+    return allProjectsId
+  }
+  return selectedProjectId
 }
 
 /**

@@ -620,6 +620,22 @@
   border-color: var(--dkb-border-strong);
 }
 
+.dkb-card-drop-before {
+  position: relative;
+}
+
+.dkb-card-drop-before::before {
+  position: absolute;
+  top: -5px;
+  right: -1px;
+  left: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--dkb-brand);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dkb-brand) 18%, transparent);
+  content: '';
+}
+
 .dkb-card-attention {
   border-color: color-mix(in srgb, var(--dkb-warn) 32%, var(--dkb-border));
 }

@@ -2,6 +2,7 @@ import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } f
 import { PRIORITIES, STATUSES } from '../../shared/statuses.js'
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+const CREATE_STATUSES = STATUSES.filter((status) => status !== 'canceled')
 
 export function projectErrorText(error, t) {
   if (error?.code === 'PROJECT_NOT_EMPTY') {
@@ -278,7 +279,7 @@ export function CreateTaskDialog({
       </Field>
       <Field label={t('taskStatus')}>
         <select className="dkb-select" value={status} onChange={(event) => setStatus(event.target.value)} disabled={busy}>
-          {STATUSES.map((value) => <option key={value} value={value}>{t(`status_${value}`)}</option>)}
+          {CREATE_STATUSES.map((value) => <option key={value} value={value}>{t(`status_${value}`)}</option>)}
         </select>
       </Field>
       <Field label={t('taskPriority')}>

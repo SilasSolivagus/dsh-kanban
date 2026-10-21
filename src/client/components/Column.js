@@ -10,6 +10,7 @@ export function Column({
   collapsed = false,
   isOver = false,
   dropInvalid = false,
+  dropBeforeTaskId = null,
   readOnly = false,
   projects = [],
   showProject = false,
@@ -95,6 +96,7 @@ export function Column({
           showProject={showProject}
           readOnly={readOnly}
           selected={selectedTaskId === task.id}
+          dropBefore={dropBeforeTaskId === task.id}
           onOpen={onOpenTask}
           onFilterProject={onFilterProject}
           onFilterPriority={onFilterPriority}

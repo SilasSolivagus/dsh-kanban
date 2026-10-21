@@ -130,6 +130,7 @@ export function TaskCard({
   showProject = false,
   readOnly = false,
   selected = false,
+  dropBefore = false,
   onOpen,
   onFilterProject,
   onFilterPriority,
@@ -157,6 +158,7 @@ export function TaskCard({
     `dkb-card-tone-${task.column ?? 'backlog'}`,
     selected ? 'dkb-card-selected' : '',
     attention ? 'dkb-card-attention' : '',
+    dropBefore ? 'dkb-card-drop-before' : '',
   ].filter(Boolean).join(' ')
 
   return <article
