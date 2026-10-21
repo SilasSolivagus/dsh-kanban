@@ -36,19 +36,22 @@
 - Create: `src/host/entry.js`
 - Create: `src/client/index.jsx`
 - Create: `src/client/styles.css`
-- Move: `client.js`, `index.js` to `.prototype/` for reference
 - Keep: `icon.svg`, `locale/en.json`, `locale/zh.json`
 
 **Interfaces:**
 - Produces: `pnpm build` → `index.js` (Host ESM) and `client.js` (module-loader bundle)
 - Produces: `pnpm test` → Node test runner
 
-- [ ] **Step 1: Preserve the old prototype**
+- [ ] **Step 1: Confirm the isolated worktree baseline**
 
 ```bash
-mkdir -p .prototype
-mv client.js index.js .prototype/
+git status --short --branch
+git log --oneline -2
 ```
+
+Expected: the implementation branch is checked out; only spec, plan and
+`.gitignore` are tracked. The old prototype remains in the main working tree
+and is not part of this branch.
 
 - [ ] **Step 2: Write `package.json`**
 
@@ -190,7 +193,7 @@ Expected: both files are emitted, `node --check` exits 0, and `client.js` starts
 - [ ] **Step 9: Commit**
 
 ```bash
-git add package.json cordis.patch.yml scripts/build.mjs src .prototype
+git add package.json cordis.patch.yml scripts/build.mjs src
 git commit -m "chore: scaffold native kanban plugin"
 ```
 
@@ -975,7 +978,51 @@ Expected: `updateTask is not a function`.
 
 - [ ] **Step 3: Implement task methods**
 
+Replace the minimal `createTask` from Task 4 with the full version, then add
+the methods below.
+
 ```js
+  createTask({ projectId, title, description = '', status = 'backlog', priority = 'none', labels = [], assigneeTarget = 'current-user', sortOrder }) {
+    return this.#run(async () => {
+      const project = this.#project(projectId)
+      if (project.archivedAt) throw Object.assign(new Error('Project is archived'), { code: 'PROJECT_ARCHIVED' })
+      const tasks = [...this.#tables.tasks.entries()].map(([, task]) => task)
+      const identifier = nextIdentifier(project, tasks)
+      const timestamp = this.#now()
+      const siblings = tasks.filter((task) => task.projectId === projectId && task.status === status && !task.archivedAt)
+      const order = sortOrder ?? (siblings.length ? Math.min(...siblings.map((task) => task.sortOrder)) - 1000 : 1000)
+      const task = {
+        id: this.#newId(),
+        identifier,
+        projectId,
+        title: String(title).trim(),
+        description: String(description),
+        status,
+        priority,
+        labels: [...labels],
+        assignee: LOCAL_USER,
+        sortOrder: order,
+        statusSince: timestamp,
+        blockedReason: null,
+        blockedSince: null,
+        pendingQuestion: null,
+        questionResolution: null,
+        links: [],
+        archivedAt: null,
+        version: 1,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+      await this.#tables.tasks.put(task.id, task)
+      await this.#tables.projects.put(projectId, {
+        ...project,
+        nextTaskNumber: Number(identifier.split('-').at(-1)) + 1,
+        updatedAt: timestamp,
+      })
+      return task
+    })
+  }
+
   updateTask(id, patch) {
     return this.#run(async () => {
       const task = this.#task(id)
