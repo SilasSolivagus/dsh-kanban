@@ -1,27 +1,51 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { canDrop } from '../../shared/rules.js'
+import { COLUMN_IDS, PRIORITIES } from '../../shared/statuses.js'
 import { api } from '../api.js'
-import { groupTasks } from '../store-state.js'
+import {
+  DEFAULT_STATUS_BY_COLUMN,
+  activeFilterCount,
+  computeDropSortOrder,
+  matchesFilters,
+  parseCollapsedColumns,
+  serializeCollapsedColumns,
+  sortByOrder,
+  statusForColumn,
+  toggleCollapsedColumn,
+} from '../board-state.js'
+import { Board } from './Board.js'
+import { FiltersMenu } from './FiltersMenu.js'
 import { ProjectSwitcher } from './ProjectSwitcher.js'
 import {
   ArchivedTasksDialog,
   ArchiveProjectDialog,
   CreateProjectDialog,
+  CreateTaskDialog,
   DeleteProjectDialog,
   ManageProjectsDialog,
   RenameProjectDialog,
+  taskErrorText,
 } from './dialogs.js'
 import styles from '../styles.css'
 
 const ALL_PROJECTS = '__all__'
+const COLLAPSED_STORAGE_KEY = 'dsh-kanban.collapsed-columns'
+const EMPTY_FILTERS = { projectId: '', priority: '', label: '', assignee: '' }
+const COLUMN_ID_SET = new Set(COLUMN_IDS)
+const DROP_REASON_KEYS = {
+  'Needs you is automatic': 'dropNeedsAutomatic',
+  'Resolve attention before moving': 'dropResolveAttention',
+  'Resolve attention before Done': 'dropResolveBeforeDone',
+}
 
-const COLUMNS = [
-  { id: 'backlog', labelKey: 'backlog' },
-  { id: 'running', labelKey: 'running' },
-  { id: 'needs', labelKey: 'needs' },
-  { id: 'done', labelKey: 'done' },
-]
-
-const COLUMN_IDS = new Set(COLUMNS.map((column) => column.id))
+function loadCollapsedColumns() {
+  if (typeof window === 'undefined') return {}
+  try {
+    return parseCollapsedColumns(window.localStorage.getItem(COLLAPSED_STORAGE_KEY))
+  } catch {
+    return {}
+  }
+}
 
 function SearchIcon() {
   return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -42,6 +66,10 @@ export function App({ t }) {
   const [tasks, setTasks] = useState([])
   const [selectedProjectId, setSelectedProjectId] = useState(ALL_PROJECTS)
   const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState(EMPTY_FILTERS)
+  const [collapsed, setCollapsed] = useState(loadCollapsedColumns)
+  const [selectedTaskId, setSelectedTaskId] = useState(null)
+  const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
@@ -50,6 +78,32 @@ export function App({ t }) {
   const tRef = useRef(t)
   tRef.current = t
   const dialogKey = useRef(0)
+  const toastKey = useRef(0)
+  const searchRef = useRef(null)
+
+  const showToast = useCallback((message, tone = 'error') => {
+    toastKey.current += 1
+    setToast({ id: toastKey.current, message, tone })
+  }, [])
+
+  useEffect(() => {
+    if (!toast) return undefined
+    const timer = setTimeout(() => {
+      setToast((current) => current?.id === toast.id ? null : current)
+    }, 4000)
+    return () => clearTimeout(timer)
+  }, [toast])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const onKeyDown = (event) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return
+      event.preventDefault()
+      searchRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   const load = useCallback(async ({ silent = false, selectProjectId } = {}) => {
     if (silent) setRefreshing(true)
@@ -86,13 +140,31 @@ export function App({ t }) {
   const activeProjectIds = useMemo(() => new Set(activeProjects.map((project) => project.id)), [activeProjects])
 
   const boardTasks = useMemo(() => {
-    return tasks.filter((task) => activeProjectIds.has(task.projectId) && COLUMN_IDS.has(task.column))
+    return tasks.filter((task) => activeProjectIds.has(task.projectId) && COLUMN_ID_SET.has(task.column))
   }, [tasks, activeProjectIds])
+
+  const filterOptions = useMemo(() => {
+    const priorities = new Set()
+    const labels = new Set()
+    const assignees = new Map()
+    for (const task of boardTasks) {
+      if (task.priority) priorities.add(task.priority)
+      for (const label of Array.isArray(task.labels) ? task.labels : []) labels.add(label)
+      const assignee = task.assignee
+      if (assignee?.id) assignees.set(assignee.id, assignee.name || assignee.id)
+    }
+    return {
+      priorities: PRIORITIES.filter((priority) => priorities.has(priority)),
+      labels: [...labels].sort((left, right) => left.localeCompare(right)),
+      assignees: [...assignees].map(([id, name]) => ({ id, name })),
+    }
+  }, [boardTasks])
 
   const visibleTasks = useMemo(() => {
     const query = search.trim().toLowerCase()
     return boardTasks.filter((task) => {
       if (selectedProjectId !== ALL_PROJECTS && task.projectId !== selectedProjectId) return false
+      if (!matchesFilters(task, filters)) return false
       if (!query) return true
       const haystack = [
         task.title,
@@ -102,10 +174,10 @@ export function App({ t }) {
       ]
       return haystack.some((value) => String(value ?? '').toLowerCase().includes(query))
     })
-  }, [boardTasks, selectedProjectId, search, projectNames])
+  }, [boardTasks, selectedProjectId, filters, search, projectNames])
 
-  const grouped = useMemo(() => groupTasks(visibleTasks), [visibleTasks])
   const runningCount = visibleTasks.filter((task) => task.status === 'in_progress').length
+  const filterCount = activeFilterCount(filters)
 
   const openDialog = useCallback((dialog) => {
     const key = `dkb-dialog-${dialogKey.current++}`
@@ -116,27 +188,56 @@ export function App({ t }) {
     setDialogs((current) => current.filter((dialog) => dialog.key !== key))
   }, [])
 
-  const createProject = useCallback(async ({ name, workspacePath }, dialogKey) => {
+  const selectProject = useCallback((projectId) => {
+    setSelectedProjectId(projectId)
+    setFilters((current) => current.projectId ? { ...current, projectId: '' } : current)
+  }, [])
+
+  const toggleColumn = useCallback((columnId) => {
+    setCollapsed((current) => {
+      const next = toggleCollapsedColumn(current, columnId)
+      try {
+        window.localStorage.setItem(COLLAPSED_STORAGE_KEY, serializeCollapsedColumns(next))
+      } catch {
+        // localStorage can be unavailable; collapse still works for this session.
+      }
+      return next
+    })
+  }, [])
+
+  const changeFilter = useCallback((key, value) => {
+    if (!Object.hasOwn(EMPTY_FILTERS, key)) return
+    setFilters((current) => ({ ...current, [key]: value }))
+  }, [])
+
+  const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), [])
+
+  const clearSearchAndFilters = useCallback(() => {
+    setSearch('')
+    setFilters(EMPTY_FILTERS)
+  }, [])
+
+  const createProject = useCallback(async ({ name, workspacePath }, key) => {
     const body = { name }
     if (workspacePath) body.workspacePath = workspacePath
     const created = await api.createProject(body)
     setProjects((current) => [...current, { ...created, taskCount: 0 }])
     setSelectedProjectId(created.id)
-    closeDialog(dialogKey)
+    closeDialog(key)
     await load({ silent: true, selectProjectId: created.id })
   }, [closeDialog, load])
 
-  const renameProject = useCallback(async (project, name, dialogKey) => {
+  const renameProject = useCallback(async (project, name, key) => {
     const updated = await api.renameProject(project.id, { name })
     setProjects((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item))
-    closeDialog(dialogKey)
+    closeDialog(key)
   }, [closeDialog])
 
-  const archiveProject = useCallback(async (project, dialogKey) => {
+  const archiveProject = useCallback(async (project, key) => {
     const updated = await api.archiveProject(project.id)
     setProjects((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item))
     setSelectedProjectId((current) => current === project.id ? ALL_PROJECTS : current)
-    closeDialog(dialogKey)
+    closeDialog(key)
     await load({ silent: true })
   }, [closeDialog, load])
 
@@ -146,13 +247,72 @@ export function App({ t }) {
     await load({ silent: true })
   }, [load])
 
-  const deleteProject = useCallback(async (project, dialogKey) => {
+  const deleteProject = useCallback(async (project, key) => {
     await api.deleteProject(project.id)
     setProjects((current) => current.filter((item) => item.id !== project.id))
     setSelectedProjectId((current) => current === project.id ? ALL_PROJECTS : current)
-    closeDialog(dialogKey)
+    closeDialog(key)
     await load({ silent: true })
   }, [closeDialog, load])
+
+  const createTask = useCallback(async (payload, key) => {
+    await api.createTask(payload)
+    closeDialog(key)
+    await load({ silent: true })
+  }, [closeDialog, load])
+
+  const addTask = useCallback((columnId) => {
+    openDialog({ type: 'createTask', status: DEFAULT_STATUS_BY_COLUMN[columnId] ?? 'backlog' })
+  }, [openDialog])
+
+  const openTask = useCallback((task) => {
+    setSelectedTaskId(task.id)
+    showToast(tRef.current('taskDetailNextStep'), 'info')
+  }, [showToast])
+
+  const filterByProject = useCallback((projectId) => {
+    setFilters((current) => ({ ...current, projectId: current.projectId === projectId ? '' : projectId }))
+  }, [])
+
+  const filterByPriority = useCallback((priority) => {
+    setFilters((current) => ({ ...current, priority: current.priority === priority ? '' : priority }))
+  }, [])
+
+  const dropTask = useCallback(async (task, columnId, beforeTaskId) => {
+    const check = canDrop(task, columnId)
+    if (!check.ok) {
+      showToast(tRef.current(DROP_REASON_KEYS[check.reason] ?? 'dropRejected'))
+      return
+    }
+    const status = statusForColumn(columnId, task.status)
+    if (!status) {
+      showToast(tRef.current('dropRejected'))
+      return
+    }
+    const columnTasks = sortByOrder(tasks.filter((item) => (
+      item.id !== task.id
+      && item.column === columnId
+      && activeProjectIds.has(item.projectId)
+    )))
+    const sortOrder = computeDropSortOrder(columnTasks, beforeTaskId)
+    try {
+      await api.updateTask(task.id, { version: task.version, status, sortOrder })
+      await load({ silent: true })
+    } catch (failure) {
+      showToast(taskErrorText(failure, tRef.current))
+      await load({ silent: true })
+    }
+  }, [tasks, activeProjectIds, load, showToast])
+
+  const answerTask = useCallback(async (task, decision, selected, note) => {
+    try {
+      await api.answerQuestion(task.id, { version: task.version, decision, selected, note })
+      await load({ silent: true })
+    } catch (failure) {
+      showToast(taskErrorText(failure, tRef.current))
+      await load({ silent: true })
+    }
+  }, [load, showToast])
 
   const loadArchivedTasks = useCallback((projectId) => {
     return api.archivedTasks(projectId).then((data) => data?.tasks ?? [])
@@ -169,6 +329,20 @@ export function App({ t }) {
         layer={layer}
         onClose={close}
         onCreate={(payload) => createProject(payload, dialog.key)}
+      />
+    }
+    if (dialog.type === 'createTask') {
+      return <CreateTaskDialog
+        key={dialog.key}
+        t={t}
+        layer={layer}
+        projects={activeProjects}
+        defaultProjectId={selectedProjectId !== ALL_PROJECTS
+          ? selectedProjectId
+          : filters.projectId || (activeProjects.length === 1 ? activeProjects[0].id : '')}
+        defaultStatus={dialog.status}
+        onClose={close}
+        onCreate={(payload) => createTask(payload, dialog.key)}
       />
     }
     if (dialog.type === 'rename') {
@@ -238,7 +412,7 @@ export function App({ t }) {
           projects={activeProjects}
           archivedCount={archivedProjects.length}
           selectedId={selectedProjectId}
-          onSelect={setSelectedProjectId}
+          onSelect={selectProject}
           onCreate={() => openDialog({ type: 'create' })}
           onManage={() => openDialog({ type: 'manage', view: 'active' })}
           onArchivedProjects={() => openDialog({ type: 'manage', view: 'archived' })}
@@ -248,6 +422,7 @@ export function App({ t }) {
         <div className="dkb-search">
           <span className="dkb-search-icon" aria-hidden="true"><SearchIcon /></span>
           <input
+            ref={searchRef}
             className="dkb-input dkb-search-input"
             type="search"
             value={search}
@@ -256,15 +431,16 @@ export function App({ t }) {
             aria-label={t('search')}
           />
         </div>
-        <button
-          type="button"
-          className="dkb-button dkb-button-ghost dkb-filters"
-          title={t('filters')}
-          disabled
-          aria-disabled="true"
-        >
-          {t('filters')}
-        </button>
+        <FiltersMenu
+          t={t}
+          filters={filters}
+          projects={activeProjects}
+          priorities={filterOptions.priorities}
+          labels={filterOptions.labels}
+          assignees={filterOptions.assignees}
+          onChange={changeFilter}
+          onClear={clearFilters}
+        />
         <span className="dkb-running" aria-live="polite">
           <span className="dkb-running-dot" aria-hidden="true" />
           {t('runningCount', { count: runningCount })}
@@ -302,24 +478,46 @@ export function App({ t }) {
             {t('createProject')}
           </button>
         </div> : null}
-        {!loading && projects.length > 0 ? <section className="dkb-board" aria-label={t('nav')}>
+        {projects.length > 0 ? <section className="dkb-board" aria-label={t('nav')}>
           <div className="dkb-board-head">
             <div>
               <h2 className="dkb-board-title">{selectedProject?.name ?? t('allProjects')}</h2>
-              <p className="dkb-board-meta">{t('taskCount', { count: visibleTasks.length })}</p>
+              <p className="dkb-board-meta">
+                {t('taskCount', { count: visibleTasks.length })}
+                {filterCount > 0 ? ` · ${t('filtersActive', { count: filterCount })}` : ''}
+              </p>
             </div>
           </div>
-          <div className="dkb-column-counts">
-            {COLUMNS.map((column) => <div className={`dkb-column-count dkb-tone-${column.id}`} key={column.id}>
-              <span className="dkb-column-count-label">{t(column.labelKey)}</span>
-              <strong className="dkb-column-count-value">{grouped[column.id].length}</strong>
-            </div>)}
-          </div>
-          <p className="dkb-muted dkb-board-placeholder-text">
-            {visibleTasks.length === 0 ? t('boardEmpty') : t('boardPlaceholder')}
-          </p>
+          {visibleTasks.length === 0 && (search.trim() || filterCount > 0) ? <div className="dkb-board-empty">
+            <span>{t('noMatches')}</span>
+            <button type="button" className="dkb-button dkb-button-small" onClick={clearSearchAndFilters}>
+              {t('clearSearchAndFilters')}
+            </button>
+          </div> : null}
+          <Board
+            tasks={visibleTasks}
+            collapsed={collapsed}
+            projects={activeProjects}
+            showProject={selectedProjectId === ALL_PROJECTS}
+            readOnly={Boolean(selectedProject?.archivedAt)}
+            onToggleColumn={toggleColumn}
+            onOpenTask={openTask}
+            onDropTask={dropTask}
+            onAddTask={addTask}
+            onFilterProject={filterByProject}
+            onFilterPriority={filterByPriority}
+            onAnswerQuestion={answerTask}
+            selectedTaskId={selectedTaskId}
+            t={t}
+          />
         </section> : null}
       </main>
+
+      {toast ? <div
+        className={`dkb-toast dkb-toast-${toast.tone}`}
+        role="status"
+        aria-live="polite"
+      >{toast.message}</div> : null}
 
       {dialogs.map(renderDialog)}
     </div>

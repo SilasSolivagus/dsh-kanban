@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { PRIORITIES, STATUSES } from '../../shared/statuses.js'
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -7,6 +8,22 @@ export function projectErrorText(error, t) {
     return t('projectNotEmpty', { count: error?.details?.taskCount ?? 0 })
   }
   if (error?.code === 'PROJECT_EXISTS') return t('projectExists')
+  if (error?.code === 'PROJECT_ARCHIVED') return t('projectArchived')
+  if (error?.code === 'PROJECT_NOT_FOUND') return t('projectNotFound')
+  if (error?.code === 'INVALID_FIELD') {
+    return t('invalidField', { field: error?.details?.field ?? '' })
+  }
+  return error?.message || t('actionFailed')
+}
+
+export function taskErrorText(error, t) {
+  if (error?.code === 'TASK_VERSION_CONFLICT') return t('versionConflict')
+  if (error?.code === 'TASK_NEEDS_ATTENTION') return t('resolveAttention')
+  if (error?.code === 'TASK_NOT_IN_REVIEW') return t('reviewNotPending')
+  if (error?.code === 'TASK_ARCHIVED') return t('taskArchived')
+  if (error?.code === 'TASK_NOT_FOUND') return t('taskNotFound')
+  if (error?.code === 'QUESTION_ALREADY_PENDING') return t('questionAlreadyPending')
+  if (error?.code === 'QUESTION_NOT_PENDING') return t('questionNotPending')
   if (error?.code === 'PROJECT_ARCHIVED') return t('projectArchived')
   if (error?.code === 'PROJECT_NOT_FOUND') return t('projectNotFound')
   if (error?.code === 'INVALID_FIELD') {
@@ -164,6 +181,126 @@ export function CreateProjectDialog({ t, layer, onClose, onCreate }) {
           spellCheck={false}
           autoComplete="off"
         />
+      </Field>
+      {error ? <ErrorBanner>{error}</ErrorBanner> : null}
+      <div className="dkb-modal-actions">
+        <button type="button" className="dkb-button" onClick={onClose} disabled={busy}>{t('cancel')}</button>
+        <button type="submit" className="dkb-button dkb-button-primary" disabled={busy}>{t('create')}</button>
+      </div>
+    </form>
+  </Modal>
+}
+
+export function CreateTaskDialog({
+  t,
+  layer,
+  projects = [],
+  defaultProjectId = '',
+  defaultStatus = 'backlog',
+  onClose,
+  onCreate,
+}) {
+  const [projectId, setProjectId] = useState(defaultProjectId || '')
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [status, setStatus] = useState(defaultStatus)
+  const [priority, setPriority] = useState('none')
+  const [labels, setLabels] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const mountedRef = useMountedRef()
+
+  const submit = async (event) => {
+    event.preventDefault()
+    const cleanTitle = title.trim()
+    if (!cleanTitle) {
+      setError(t('titleRequired'))
+      return
+    }
+    if (!projectId) {
+      setError(t('projectRequired'))
+      return
+    }
+    const cleanLabels = labels.split(',').map((label) => label.trim()).filter(Boolean)
+    setBusy(true)
+    setError('')
+    try {
+      await onCreate({
+        projectId,
+        title: cleanTitle,
+        description,
+        status,
+        priority,
+        labels: cleanLabels,
+        assigneeTarget: 'current-user',
+      })
+    } catch (failure) {
+      if (!mountedRef.current) return
+      setError(taskErrorText(failure, t))
+      setBusy(false)
+    }
+  }
+
+  return <Modal title={t('createTask')} t={t} onClose={onClose} layer={layer} busy={busy}>
+    <form className="dkb-form" onSubmit={submit} noValidate>
+      <Field label={t('taskProject')}>
+        <select
+          className="dkb-select"
+          value={projectId}
+          onChange={(event) => setProjectId(event.target.value)}
+          disabled={busy}
+        >
+          <option value="">{t('selectProject')}</option>
+          {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+        </select>
+      </Field>
+      <Field label={t('taskTitle')}>
+        <input
+          className="dkb-input"
+          data-autofocus="true"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder={t('taskTitlePlaceholder')}
+          maxLength={240}
+          autoComplete="off"
+          disabled={busy}
+        />
+      </Field>
+      <Field label={t('taskDescription')}>
+        <textarea
+          className="dkb-textarea"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder={t('taskDescriptionPlaceholder')}
+          rows={3}
+          disabled={busy}
+        />
+      </Field>
+      <Field label={t('taskStatus')}>
+        <select className="dkb-select" value={status} onChange={(event) => setStatus(event.target.value)} disabled={busy}>
+          {STATUSES.map((value) => <option key={value} value={value}>{t(`status_${value}`)}</option>)}
+        </select>
+      </Field>
+      <Field label={t('taskPriority')}>
+        <select className="dkb-select" value={priority} onChange={(event) => setPriority(event.target.value)} disabled={busy}>
+          {PRIORITIES.map((value) => <option key={value} value={value}>{t(`priority_${value}`)}</option>)}
+        </select>
+      </Field>
+      <Field label={t('taskLabels')}>
+        <input
+          className="dkb-input"
+          value={labels}
+          onChange={(event) => setLabels(event.target.value)}
+          placeholder={t('taskLabelsPlaceholder')}
+          autoComplete="off"
+          disabled={busy}
+        />
+        <span className="dkb-field-hint">{t('taskLabelsHint')}</span>
+      </Field>
+      <Field label={t('taskAssignee')}>
+        <select className="dkb-select" defaultValue="current-user" disabled>
+          <option value="current-user">{t('currentUser')}</option>
+        </select>
       </Field>
       {error ? <ErrorBanner>{error}</ErrorBanner> : null}
       <div className="dkb-modal-actions">
