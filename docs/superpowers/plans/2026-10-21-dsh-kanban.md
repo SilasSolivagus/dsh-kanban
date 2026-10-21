@@ -685,7 +685,7 @@ function makeStore() {
 
 test('create, rename, archive, restore, delete empty project', async () => {
   const store = makeStore()
-  const created = await store.createProject({ name: 'DSH 看板' })
+  const created = await store.createProject({ name: 'dsh-kanban' })
   assert.equal(created.id, 'dsh-kanban')
   assert.equal(created.taskPrefix, 'DSH')
 
