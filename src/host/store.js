@@ -16,6 +16,7 @@ const QUESTION_OPTIONS_MIN = 2
 const QUESTION_OPTIONS_MAX = 5
 const QUESTION_OPTION_LABEL_MAX = 200
 const QUESTION_OPTION_DETAIL_MAX = 1000
+const COMMENT_BODY_MAX = 10000
 const QUESTION_DECISIONS = ['approve', 'reject']
 const TASK_PATCH_FIELDS = new Set([
   'title',
@@ -184,6 +185,21 @@ function hasUnresolvedQuestion(task) {
   return Boolean(task.pendingQuestion) && !task.questionResolution
 }
 
+function validateCommentBody(value) {
+  if (typeof value !== 'string') throw invalidField('body', 'must be a string')
+  const body = value.trim()
+  if (body.length < 1 || body.length > COMMENT_BODY_MAX) {
+    throw invalidField('body', `must be 1-${COMMENT_BODY_MAX} characters after trimming`)
+  }
+  return body
+}
+
+function sameValue(left, right) {
+  if (left === right) return true
+  if (typeof left !== 'object' || typeof right !== 'object' || left === null || right === null) return false
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
 export class KanbanStore {
   #tables
   #attachments
@@ -222,6 +238,17 @@ export class KanbanStore {
     if (project.archivedAt) throw Object.assign(new Error('Project is archived'), { code: 'PROJECT_ARCHIVED' })
     if (task.archivedAt) throw Object.assign(new Error('Task is archived'), { code: 'TASK_ARCHIVED' })
     return task
+  }
+
+  async #activity(taskId, changes) {
+    const event = {
+      id: this.#newId(),
+      taskId,
+      actor: LOCAL_USER,
+      changes,
+      createdAt: this.#now(),
+    }
+    await this.#tables.activity.put(event.id, event)
   }
 
   bootstrap() {
@@ -362,6 +389,7 @@ export class KanbanStore {
         nextTaskNumber: Number(identifier.split('-').at(-1)) + 1,
         updatedAt: timestamp,
       })
+      await this.#activity(task.id, [{ field: 'status', before: null, after: task.status }])
       return task
     })
   }
@@ -399,7 +427,19 @@ export class KanbanStore {
           throw Object.assign(new Error('Resolve attention before Done'), { code: 'TASK_NEEDS_ATTENTION' })
         }
       }
+      const changes = []
+      const record = (field, before, after) => {
+        if (!sameValue(before, after)) changes.push({ field, before, after })
+      }
+      record('title', task.title, next.title)
+      record('description', task.description, next.description)
+      record('status', task.status, next.status)
+      record('priority', task.priority, next.priority)
+      record('labels', task.labels, next.labels)
+      record('links', task.links, next.links)
+      record('blockedReason', task.blockedReason, next.blockedReason)
       await this.#tables.tasks.put(id, next)
+      if (changes.length) await this.#activity(id, changes)
       return next
     })
   }
@@ -435,6 +475,7 @@ export class KanbanStore {
         updatedAt: now,
       }
       await this.#tables.tasks.put(id, next)
+      await this.#activity(id, [{ field: 'pendingQuestion', before: null, after: cleanPrompt }])
       return this.#summary(next)
     })
   }
@@ -476,7 +517,40 @@ export class KanbanStore {
         updatedAt: now,
       }
       await this.#tables.tasks.put(id, next)
+      await this.#activity(id, [
+        { field: 'questionResolution', before: task.questionResolution, after: next.questionResolution },
+        { field: 'status', before: task.status, after: next.status },
+      ])
       return this.#summary(next)
+    })
+  }
+
+  addComment(taskId, body) {
+    return this.#run(async () => {
+      const task = this.#mutableTask(taskId)
+      const cleanBody = validateCommentBody(body)
+      const timestamp = this.#now()
+      const comment = {
+        id: this.#newId(),
+        taskId: task.id,
+        body: cleanBody,
+        author: LOCAL_USER,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+      await this.#tables.comments.put(comment.id, comment)
+      return comment
+    })
+  }
+
+  deleteComment(taskId, commentId) {
+    return this.#run(async () => {
+      this.#mutableTask(taskId)
+      const comment = this.#tables.comments.get(commentId)
+      if (!comment || comment.taskId !== taskId) {
+        throw Object.assign(new Error('Comment not found'), { code: 'NOT_FOUND' })
+      }
+      await this.#tables.comments.delete(commentId)
     })
   }
 
@@ -499,6 +573,7 @@ export class KanbanStore {
       const now = this.#now()
       const next = { ...task, archivedAt: now, updatedAt: now, version: task.version + 1 }
       await this.#tables.tasks.put(id, next)
+      await this.#activity(id, [{ field: 'archivedAt', before: task.archivedAt, after: next.archivedAt }])
       return next
     })
   }
@@ -512,6 +587,7 @@ export class KanbanStore {
       if (version !== task.version) throw Object.assign(new Error('Task changed elsewhere'), { code: 'TASK_VERSION_CONFLICT' })
       const next = { ...task, archivedAt: null, updatedAt: this.#now(), version: task.version + 1 }
       await this.#tables.tasks.put(id, next)
+      await this.#activity(id, [{ field: 'archivedAt', before: task.archivedAt, after: next.archivedAt }])
       return next
     })
   }
