@@ -26,7 +26,18 @@ function Field({ label, children }) {
   </label>
 }
 
-export function Modal({ title, t, onClose, layer = 0, wide = false, children }) {
+function useMountedRef() {
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+  return mountedRef
+}
+
+export function Modal({ title, t, onClose, layer = 0, wide = false, busy = false, children }) {
   const titleId = useId()
   const layerRef = useRef(null)
   const returnFocusRef = useRef(null)
@@ -49,7 +60,7 @@ export function Modal({ title, t, onClose, layer = 0, wide = false, children }) 
     if (event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
-      onClose()
+      if (!busy) onClose()
       return
     }
     if (event.key !== 'Tab') return
@@ -68,12 +79,18 @@ export function Modal({ title, t, onClose, layer = 0, wide = false, children }) 
     }
   }
 
+  const requestClose = () => {
+    if (busy) return
+    onClose()
+  }
+
   return <div
     className="dkb-modal-layer"
     style={{ zIndex: 1000 + layer }}
     ref={layerRef}
     onKeyDown={onKeyDown}
     onClick={(event) => {
+      if (busy) return
       if (event.target === event.currentTarget) onClose()
     }}
   >
@@ -81,11 +98,20 @@ export function Modal({ title, t, onClose, layer = 0, wide = false, children }) 
       className={`dkb-modal${wide ? ' dkb-modal-wide' : ''}`}
       role="dialog"
       aria-modal="true"
+      aria-busy={busy || undefined}
       aria-labelledby={titleId}
     >
       <div className="dkb-modal-head">
         <h2 className="dkb-modal-title" id={titleId}>{title}</h2>
-        <button type="button" className="dkb-modal-close" onClick={onClose} aria-label={t('close')} title={t('close')}>×</button>
+        <button
+          type="button"
+          className="dkb-modal-close"
+          onClick={requestClose}
+          disabled={busy}
+          aria-disabled={busy || undefined}
+          aria-label={t('close')}
+          title={t('close')}
+        >×</button>
       </div>
       <div className="dkb-modal-body">{children}</div>
     </div>
@@ -97,6 +123,7 @@ export function CreateProjectDialog({ t, layer, onClose, onCreate }) {
   const [workspacePath, setWorkspacePath] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const mountedRef = useMountedRef()
 
   const submit = async (event) => {
     event.preventDefault()
@@ -110,12 +137,13 @@ export function CreateProjectDialog({ t, layer, onClose, onCreate }) {
     try {
       await onCreate({ name: cleanName, workspacePath: workspacePath.trim() })
     } catch (failure) {
+      if (!mountedRef.current) return
       setError(projectErrorText(failure, t))
       setBusy(false)
     }
   }
 
-  return <Modal title={t('createProject')} t={t} onClose={onClose} layer={layer}>
+  return <Modal title={t('createProject')} t={t} onClose={onClose} layer={layer} busy={busy}>
     <form className="dkb-form" onSubmit={submit} noValidate>
       <Field label={t('projectName')}>
         <input
@@ -150,6 +178,7 @@ export function RenameProjectDialog({ t, layer, project, onClose, onRename }) {
   const [name, setName] = useState(project.name)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const mountedRef = useMountedRef()
 
   const submit = async (event) => {
     event.preventDefault()
@@ -163,12 +192,13 @@ export function RenameProjectDialog({ t, layer, project, onClose, onRename }) {
     try {
       await onRename(project, cleanName)
     } catch (failure) {
+      if (!mountedRef.current) return
       setError(projectErrorText(failure, t))
       setBusy(false)
     }
   }
 
-  return <Modal title={t('renameProject')} t={t} onClose={onClose} layer={layer}>
+  return <Modal title={t('renameProject')} t={t} onClose={onClose} layer={layer} busy={busy}>
     <form className="dkb-form" onSubmit={submit} noValidate>
       <Field label={t('projectName')}>
         <input
@@ -192,6 +222,7 @@ export function RenameProjectDialog({ t, layer, project, onClose, onRename }) {
 export function ArchiveProjectDialog({ t, layer, project, onClose, onConfirm }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const mountedRef = useMountedRef()
 
   const submit = async (event) => {
     event.preventDefault()
@@ -200,12 +231,13 @@ export function ArchiveProjectDialog({ t, layer, project, onClose, onConfirm }) 
     try {
       await onConfirm(project)
     } catch (failure) {
+      if (!mountedRef.current) return
       setError(projectErrorText(failure, t))
       setBusy(false)
     }
   }
 
-  return <Modal title={t('archiveProject')} t={t} onClose={onClose} layer={layer}>
+  return <Modal title={t('archiveProject')} t={t} onClose={onClose} layer={layer} busy={busy}>
     <form className="dkb-form" onSubmit={submit}>
       <p className="dkb-dialog-text">{t('archiveConfirm', { name: project.name })}</p>
       {error ? <ErrorBanner>{error}</ErrorBanner> : null}
@@ -220,6 +252,7 @@ export function ArchiveProjectDialog({ t, layer, project, onClose, onConfirm }) 
 export function DeleteProjectDialog({ t, layer, project, onClose, onConfirm }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const mountedRef = useMountedRef()
 
   const submit = async (event) => {
     event.preventDefault()
@@ -228,12 +261,13 @@ export function DeleteProjectDialog({ t, layer, project, onClose, onConfirm }) {
     try {
       await onConfirm(project)
     } catch (failure) {
+      if (!mountedRef.current) return
       setError(projectErrorText(failure, t))
       setBusy(false)
     }
   }
 
-  return <Modal title={t('deleteProject')} t={t} onClose={onClose} layer={layer}>
+  return <Modal title={t('deleteProject')} t={t} onClose={onClose} layer={layer} busy={busy}>
     <form className="dkb-form" onSubmit={submit}>
       <p className="dkb-dialog-text">{t('deleteConfirm', { name: project.name })}</p>
       {project.taskCount > 0 ? <p className="dkb-warning">{t('deleteNonEmptyHint', { count: project.taskCount })}</p> : null}

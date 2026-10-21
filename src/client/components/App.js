@@ -21,6 +21,8 @@ const COLUMNS = [
   { id: 'done', labelKey: 'done' },
 ]
 
+const COLUMN_IDS = new Set(COLUMNS.map((column) => column.id))
+
 function SearchIcon() {
   return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
     <circle cx="6.1" cy="6.1" r="4.1" stroke="currentColor" strokeWidth="1.4" />
@@ -81,10 +83,15 @@ export function App({ t }) {
   const selectedProject = activeProjects.find((project) => project.id === selectedProjectId) ?? null
 
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects])
+  const activeProjectIds = useMemo(() => new Set(activeProjects.map((project) => project.id)), [activeProjects])
+
+  const boardTasks = useMemo(() => {
+    return tasks.filter((task) => activeProjectIds.has(task.projectId) && COLUMN_IDS.has(task.column))
+  }, [tasks, activeProjectIds])
 
   const visibleTasks = useMemo(() => {
     const query = search.trim().toLowerCase()
-    return tasks.filter((task) => {
+    return boardTasks.filter((task) => {
       if (selectedProjectId !== ALL_PROJECTS && task.projectId !== selectedProjectId) return false
       if (!query) return true
       const haystack = [
@@ -95,7 +102,7 @@ export function App({ t }) {
       ]
       return haystack.some((value) => String(value ?? '').toLowerCase().includes(query))
     })
-  }, [tasks, selectedProjectId, search, projectNames])
+  }, [boardTasks, selectedProjectId, search, projectNames])
 
   const grouped = useMemo(() => groupTasks(visibleTasks), [visibleTasks])
   const runningCount = visibleTasks.filter((task) => task.status === 'in_progress').length
@@ -106,36 +113,32 @@ export function App({ t }) {
   }, [])
 
   const closeDialog = useCallback((key) => {
-    setDialogs((current) => {
-      if (key === undefined) return current.slice(0, -1)
-      const index = current.findIndex((dialog) => dialog.key === key)
-      return index === -1 ? current : current.slice(0, index)
-    })
+    setDialogs((current) => current.filter((dialog) => dialog.key !== key))
   }, [])
 
-  const createProject = useCallback(async ({ name, workspacePath }) => {
+  const createProject = useCallback(async ({ name, workspacePath }, dialogKey) => {
     const body = { name }
     if (workspacePath) body.workspacePath = workspacePath
     const created = await api.createProject(body)
     setProjects((current) => [...current, { ...created, taskCount: 0 }])
     setSelectedProjectId(created.id)
-    setDialogs((current) => current.slice(0, -1))
+    closeDialog(dialogKey)
     await load({ silent: true, selectProjectId: created.id })
-  }, [load])
+  }, [closeDialog, load])
 
-  const renameProject = useCallback(async (project, name) => {
+  const renameProject = useCallback(async (project, name, dialogKey) => {
     const updated = await api.renameProject(project.id, { name })
     setProjects((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item))
-    setDialogs((current) => current.slice(0, -1))
-  }, [])
+    closeDialog(dialogKey)
+  }, [closeDialog])
 
-  const archiveProject = useCallback(async (project) => {
+  const archiveProject = useCallback(async (project, dialogKey) => {
     const updated = await api.archiveProject(project.id)
     setProjects((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item))
     setSelectedProjectId((current) => current === project.id ? ALL_PROJECTS : current)
-    setDialogs((current) => current.slice(0, -1))
+    closeDialog(dialogKey)
     await load({ silent: true })
-  }, [load])
+  }, [closeDialog, load])
 
   const restoreProject = useCallback(async (project) => {
     const updated = await api.restoreProject(project.id)
@@ -143,13 +146,13 @@ export function App({ t }) {
     await load({ silent: true })
   }, [load])
 
-  const deleteProject = useCallback(async (project) => {
+  const deleteProject = useCallback(async (project, dialogKey) => {
     await api.deleteProject(project.id)
     setProjects((current) => current.filter((item) => item.id !== project.id))
     setSelectedProjectId((current) => current === project.id ? ALL_PROJECTS : current)
-    setDialogs((current) => current.slice(0, -1))
+    closeDialog(dialogKey)
     await load({ silent: true })
-  }, [load])
+  }, [closeDialog, load])
 
   const loadArchivedTasks = useCallback((projectId) => {
     return api.archivedTasks(projectId).then((data) => data?.tasks ?? [])
@@ -160,16 +163,43 @@ export function App({ t }) {
   const renderDialog = (dialog, layer) => {
     const close = () => closeDialog(dialog.key)
     if (dialog.type === 'create') {
-      return <CreateProjectDialog key={dialog.key} t={t} layer={layer} onClose={close} onCreate={createProject} />
+      return <CreateProjectDialog
+        key={dialog.key}
+        t={t}
+        layer={layer}
+        onClose={close}
+        onCreate={(payload) => createProject(payload, dialog.key)}
+      />
     }
     if (dialog.type === 'rename') {
-      return <RenameProjectDialog key={dialog.key} t={t} layer={layer} project={dialog.project} onClose={close} onRename={renameProject} />
+      return <RenameProjectDialog
+        key={dialog.key}
+        t={t}
+        layer={layer}
+        project={dialog.project}
+        onClose={close}
+        onRename={(project, name) => renameProject(project, name, dialog.key)}
+      />
     }
     if (dialog.type === 'archive') {
-      return <ArchiveProjectDialog key={dialog.key} t={t} layer={layer} project={dialog.project} onClose={close} onConfirm={archiveProject} />
+      return <ArchiveProjectDialog
+        key={dialog.key}
+        t={t}
+        layer={layer}
+        project={dialog.project}
+        onClose={close}
+        onConfirm={(project) => archiveProject(project, dialog.key)}
+      />
     }
     if (dialog.type === 'delete') {
-      return <DeleteProjectDialog key={dialog.key} t={t} layer={layer} project={dialog.project} onClose={close} onConfirm={deleteProject} />
+      return <DeleteProjectDialog
+        key={dialog.key}
+        t={t}
+        layer={layer}
+        project={dialog.project}
+        onClose={close}
+        onConfirm={(project) => deleteProject(project, dialog.key)}
+      />
     }
     if (dialog.type === 'manage') {
       return <ManageProjectsDialog
@@ -186,15 +216,18 @@ export function App({ t }) {
         onDelete={(project) => openDialog({ type: 'delete', project })}
       />
     }
-    return <ArchivedTasksDialog
-      key={dialog.key}
-      t={t}
-      layer={layer}
-      projectId={selectedProjectId === ALL_PROJECTS ? null : selectedProjectId}
-      projects={projects}
-      onClose={close}
-      loadArchivedTasks={loadArchivedTasks}
-    />
+    if (dialog.type === 'archivedTasks') {
+      return <ArchivedTasksDialog
+        key={dialog.key}
+        t={t}
+        layer={layer}
+        projectId={selectedProjectId === ALL_PROJECTS ? null : selectedProjectId}
+        projects={projects}
+        onClose={close}
+        loadArchivedTasks={loadArchivedTasks}
+      />
+    }
+    return null
   }
 
   return <>
@@ -223,7 +256,13 @@ export function App({ t }) {
             aria-label={t('search')}
           />
         </div>
-        <button type="button" className="dkb-button dkb-button-ghost dkb-filters" title={t('filters')}>
+        <button
+          type="button"
+          className="dkb-button dkb-button-ghost dkb-filters"
+          title={t('filters')}
+          disabled
+          aria-disabled="true"
+        >
           {t('filters')}
         </button>
         <span className="dkb-running" aria-live="polite">

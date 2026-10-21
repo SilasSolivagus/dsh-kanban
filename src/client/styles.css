@@ -1,6 +1,6 @@
 .dkb {
-  --dkb-surface: var(--dsw-alias-bg-base, #ffffff);
-  --dkb-panel: var(--dsw-alias-bg-layer-1, #ffffff);
+  --dkb-surface: var(--dsw-alias-bg-base, var(--dsw-static-neutral-bluish-00));
+  --dkb-panel: var(--dsw-alias-bg-layer-1, var(--dsw-static-neutral-bluish-00));
   --dkb-border: var(--dsw-alias-border-l2, #e4e4e7);
   --dkb-border-strong: var(--dsw-alias-border-l3, #d4d4d8);
   --dkb-text: var(--dsw-alias-label-primary, #18181b);
@@ -241,12 +241,16 @@
 
 .dkb-button-primary {
   border-color: transparent;
-  background: var(--dkb-brand);
-  color: #ffffff;
+  background: var(--dsw-alias-button-primary-fill, var(--dkb-brand));
+  color: var(--dsw-alias-label-primary-inverted);
 }
 
 .dkb-button-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--dkb-brand) 86%, #000000);
+  background: color-mix(
+    in srgb,
+    var(--dsw-alias-button-primary-fill, var(--dkb-brand)) 80%,
+    var(--dsw-alias-button-primary-hover, var(--dkb-brand))
+  );
 }
 
 .dkb-button-ghost {
