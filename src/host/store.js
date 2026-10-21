@@ -394,7 +394,7 @@ export class KanbanStore {
         if (patch.blockedReason === null) next.blockedSince = null
         else if (!task.blockedReason) next.blockedSince = now
       }
-      if (Object.hasOwn(patch, 'status') && next.status === 'done') {
+      if (next.status === 'done') {
         if (hasUnresolvedQuestion(next) || next.blockedReason) {
           throw Object.assign(new Error('Resolve attention before Done'), { code: 'TASK_NEEDS_ATTENTION' })
         }
@@ -421,6 +421,8 @@ export class KanbanStore {
       const now = this.#now()
       const next = {
         ...task,
+        status: task.status === 'done' ? 'in_review' : task.status,
+        statusSince: task.status === 'done' ? now : task.statusSince,
         pendingQuestion: {
           prompt: cleanPrompt,
           note: cleanNote,
@@ -454,6 +456,9 @@ export class KanbanStore {
       const option = pending ? task.pendingQuestion.options.find((item) => item.id === selected) ?? null : null
       if (pending && !option) {
         throw Object.assign(new Error('Selected option is required'), { code: 'INVALID_FIELD', details: { field: 'selected' } })
+      }
+      if (cleanDecision === 'approve' && task.blockedReason) {
+        throw Object.assign(new Error('Resolve attention before Done'), { code: 'TASK_NEEDS_ATTENTION' })
       }
       const now = this.#now()
       const next = {
