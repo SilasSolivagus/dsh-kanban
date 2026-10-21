@@ -1404,6 +1404,17 @@ button.dkb-chip-project:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.dkb-archive-group-hint {
+  margin: 0 0 6px;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--dkb-warn) 26%, transparent);
+  border-radius: var(--dkb-radius-sm);
+  background: color-mix(in srgb, var(--dkb-warn) 8%, transparent);
+  color: var(--dkb-warn);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
 .dkb-archive-list {
   display: flex;
   flex-direction: column;

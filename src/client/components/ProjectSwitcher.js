@@ -83,7 +83,7 @@ export function ProjectSwitcher({
       className={`dkb-project-trigger${selectedArchived ? ' dkb-project-trigger-archived' : ''}`}
       aria-haspopup="menu"
       aria-expanded={open}
-      aria-label={`${t('menuLabel')}: ${label}`}
+      aria-label={`${t('menuLabel')}: ${label}${selectedArchived ? ` (${t('archived')})` : ''}`}
       onClick={() => setOpen((value) => !value)}
     >
       <span className="dkb-project-mark" aria-hidden="true" />

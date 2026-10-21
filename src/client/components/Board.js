@@ -93,7 +93,7 @@ export function Board({
     commitDrop(columnId, taskId)
   }
 
-  return <div className="dkb-columns" aria-readonly={readOnly || undefined}>
+  return <div className="dkb-columns">
     {COLUMNS.map((column) => {
       const check = dragging ? canDrop(dragging, column.id) : null
       return <Column
