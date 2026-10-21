@@ -121,6 +121,128 @@ test('delete requires an archived task with the current version and removes depe
   assert.equal(tables.activity.size, 0)
 })
 
+test('create rejects invalid input with INVALID_FIELD', async () => {
+  const store = makeStore()
+  const project = await store.createProject({ name: 'DSH 看板' })
+  const invalid = [
+    {},
+    { title: '' },
+    { title: '   ' },
+    { title: 'ok', status: 'blocked' },
+    { title: 'ok', priority: 'critical' },
+    { title: 'ok', description: 42 },
+    { title: 'ok', labels: ['ok', ''] },
+    { title: 'ok', labels: Array.from({ length: 21 }, (_, index) => `label-${index}`) },
+    { title: 'ok', links: [{ id: 'l1', label: 'bad', url: 'ftp://example.com' }] },
+    { title: 'ok', links: [{ id: 'l1', label: 'bad', url: 'not a url' }] },
+    { title: 'ok', sortOrder: 'first' },
+    { title: 'ok', assigneeTarget: 'agent' },
+  ]
+  for (const input of invalid) {
+    await assert.rejects(
+      () => store.createTask({ projectId: project.id, ...input }),
+      (error) => error.code === 'INVALID_FIELD',
+    )
+  }
+  assert.equal(store.bootstrap().tasks.length, 0)
+  assert.equal(store.bootstrap().projects[0].nextTaskNumber, 1)
+})
+
+test('create trims the title and accepts a valid link list', async () => {
+  const store = makeStore()
+  const project = await store.createProject({ name: 'DSH 看板' })
+  const task = await store.createTask({
+    projectId: project.id,
+    title: '  first  ',
+    links: [{ id: 'l1', label: 'Spec', url: 'https://example.com/spec' }],
+  })
+  assert.equal(task.title, 'first')
+  assert.equal(task.links.length, 1)
+})
+
+test('update rejects unknown and immutable fields with INVALID_FIELD', async () => {
+  const store = makeStore()
+  const project = await store.createProject({ name: 'DSH 看板' })
+  const task = await store.createTask({ projectId: project.id, title: 'first' })
+  const invalid = [
+    { id: 'other' },
+    { projectId: 'other' },
+    { identifier: 'DSH-9' },
+    { createdAt: '2026-10-20T00:00:00.000Z' },
+    { assignee: { type: 'agent', id: 'agent-1', name: 'Agent', avatarUrl: null } },
+    { statusSince: '2026-10-20T00:00:00.000Z' },
+    { updatedAt: '2026-10-20T00:00:00.000Z' },
+    { archivedAt: '2026-10-20T00:00:00.000Z' },
+    { versionInput: 'ignored' },
+    { surprise: true },
+  ]
+  for (const patch of invalid) {
+    await assert.rejects(
+      () => store.updateTask(task.id, { version: 1, ...patch }),
+      (error) => error.code === 'INVALID_FIELD',
+    )
+  }
+  assert.equal(store.getTaskDetail(task.id).task.version, 1)
+})
+
+test('update rejects invalid field values with INVALID_FIELD', async () => {
+  const store = makeStore()
+  const project = await store.createProject({ name: 'DSH 看板' })
+  const task = await store.createTask({ projectId: project.id, title: 'first' })
+  const invalid = [
+    { title: '' },
+    { title: '   ' },
+    { status: 'blocked' },
+    { priority: 'critical' },
+    { description: 42 },
+    { description: 'x'.repeat(100001) },
+    { labels: ['ok', ''] },
+    { labels: Array.from({ length: 21 }, (_, index) => `label-${index}`) },
+    { links: [{ id: 'l1', label: 'bad', url: 'javascript:alert(1)' }] },
+    { links: [{ id: 'l1', label: 'bad', url: 'not a url' }] },
+    { blockedReason: 5 },
+    { blockedReason: 'x'.repeat(2001) },
+    { sortOrder: Number.POSITIVE_INFINITY },
+    { assigneeTarget: 'agent' },
+  ]
+  for (const patch of invalid) {
+    await assert.rejects(
+      () => store.updateTask(task.id, { version: 1, ...patch }),
+      (error) => error.code === 'INVALID_FIELD',
+    )
+  }
+  const detail = store.getTaskDetail(task.id)
+  assert.equal(detail.task.version, 1)
+  assert.equal(detail.task.title, 'first')
+  assert.equal(detail.task.labels.length, 0)
+})
+
+test('update trims the title, persists allowed fields, and drops transport-only fields', async () => {
+  const store = makeStore()
+  const project = await store.createProject({ name: 'DSH 看板' })
+  const task = await store.createTask({ projectId: project.id, title: 'first' })
+  const updated = await store.updateTask(task.id, {
+    version: 1,
+    title: '  renamed  ',
+    description: 'details',
+    priority: 'high',
+    labels: ['ui'],
+    links: [{ id: 'l1', label: 'Spec', url: 'https://example.com/spec' }],
+    sortOrder: 42,
+    blockedReason: null,
+    assigneeTarget: 'current-user',
+  })
+  assert.equal(updated.title, 'renamed')
+  assert.equal(updated.description, 'details')
+  assert.equal(updated.priority, 'high')
+  assert.equal(updated.sortOrder, 42)
+  assert.equal(updated.version, 2)
+  assert.equal(updated.assigneeTarget, undefined)
+  assert.equal(updated.versionInput, undefined)
+  assert.deepEqual(updated.assignee, task.assignee)
+  assert.equal(updated.links[0].url, 'https://example.com/spec')
+})
+
 test('task detail returns the summary with comments, attachments, and activity', async () => {
   const { store, tables } = makeStoreWithTables()
   const project = await store.createProject({ name: 'DSH 看板' })
