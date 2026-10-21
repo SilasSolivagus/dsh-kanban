@@ -399,19 +399,21 @@ git commit -m "feat: add shared status and attention rules"
 ### Task 3: Domain schema
 
 **Files:**
+- Create: `src/host/schema.js`
 - Create: `src/host/domain.js`
-- Test: `src/host/__tests__/domain.test.js`
+- Test: `src/host/__tests__/schema.test.js`
 
 **Interfaces:**
-- Produces: `kanbanDomainSpec`
-- Table schemas validate projects, tasks, comments, attachments, activity
+- Produces: `projectSchema`, `taskSchema`, `commentSchema`, `attachmentSchema`, `activitySchema`
+- Produces: `kanbanDomainSpec` in `domain.js`
+- Tests import only `schema.js`, so the DSH loader package is not required in local Node tests.
 
 - [ ] **Step 1: Write the failing schema tests**
 
 ```js
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { kanbanDomainSpec } from '../domain.js'
+import { projectSchema, taskSchema } from '../schema.js'
 
 const project = {
   id: 'dsh-kanban',
@@ -449,36 +451,31 @@ const task = {
 }
 
 test('valid project and task parse', () => {
-  assert.equal(kanbanDomainSpec.tables.projects.valueSchema.safeParse(project).success, true)
-  assert.equal(kanbanDomainSpec.tables.tasks.valueSchema.safeParse(task).success, true)
+  assert.equal(projectSchema.safeParse(project).success, true)
+  assert.equal(taskSchema.safeParse(task).success, true)
 })
 
 test('blocked is not a stored status', () => {
-  const invalid = { ...task, status: 'blocked' }
-  assert.equal(kanbanDomainSpec.tables.tasks.valueSchema.safeParse(invalid).success, false)
+  assert.equal(taskSchema.safeParse({ ...task, status: 'blocked' }).success, false)
 })
 
 test('invalid priority is rejected', () => {
-  assert.equal(
-    kanbanDomainSpec.tables.tasks.valueSchema.safeParse({ ...task, priority: 'P0' }).success,
-    false,
-  )
+  assert.equal(taskSchema.safeParse({ ...task, priority: 'P0' }).success, false)
 })
 ```
 
 - [ ] **Step 2: Run and watch fail**
 
 ```bash
-node --test src/host/__tests__/domain.test.js
+node --test src/host/__tests__/schema.test.js
 ```
 
-Expected: cannot find `../domain.js`.
+Expected: cannot find `../schema.js`.
 
-- [ ] **Step 3: Implement `src/host/domain.js`**
+- [ ] **Step 3: Implement `src/host/schema.js`**
 
 ```js
 import { z } from 'zod'
-import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { PRIORITIES, STATUSES } from '../shared/statuses.js'
 
 const iso = z.string().min(1)
@@ -520,7 +517,7 @@ const questionResolution = z.object({
   at: iso,
 })
 
-const projectSchema = z.object({
+export const projectSchema = z.object({
   id: z.string().min(1).max(64),
   name: z.string().min(1).max(120),
   workspacePath: z.string().nullable(),
@@ -532,7 +529,7 @@ const projectSchema = z.object({
   updatedAt: iso,
 })
 
-const taskSchema = z.object({
+export const taskSchema = z.object({
   id: z.string().min(1),
   identifier: z.string().min(1),
   projectId: z.string().min(1),
@@ -555,7 +552,7 @@ const taskSchema = z.object({
   updatedAt: iso,
 })
 
-const commentSchema = z.object({
+export const commentSchema = z.object({
   id: z.string().min(1),
   taskId: z.string().min(1),
   body: z.string().min(1).max(10000),
@@ -564,7 +561,7 @@ const commentSchema = z.object({
   updatedAt: iso,
 })
 
-const attachmentSchema = z.object({
+export const attachmentSchema = z.object({
   id: z.string().min(1),
   taskId: z.string().min(1),
   filename: z.string().min(1).max(255),
@@ -578,7 +575,7 @@ const attachmentSchema = z.object({
   createdAt: iso,
 })
 
-const activitySchema = z.object({
+export const activitySchema = z.object({
   id: z.string().min(1),
   taskId: z.string().min(1),
   actor,
@@ -589,6 +586,19 @@ const activitySchema = z.object({
   })),
   createdAt: iso,
 })
+```
+
+- [ ] **Step 4: Implement `src/host/domain.js`**
+
+```js
+import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
+import {
+  activitySchema,
+  attachmentSchema,
+  commentSchema,
+  projectSchema,
+  taskSchema,
+} from './schema.js'
 
 export const kanbanDomainSpec = defineDomain({
   name: 'dsh-kanban',
@@ -603,22 +613,20 @@ export const kanbanDomainSpec = defineDomain({
 })
 ```
 
-- [ ] **Step 4: Run the tests**
+- [ ] **Step 5: Run the tests**
 
 ```bash
-node --test src/host/__tests__/domain.test.js
+node --test src/host/__tests__/schema.test.js
 ```
 
 Expected: 3 tests pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/host/domain.js src/host/__tests__/domain.test.js
-git commit -m "feat: add kanban storage domain schema"
+git add src/host/schema.js src/host/domain.js src/host/__tests__/schema.test.js
+git commit -m "feat: add kanban domain schema"
 ```
-
----
 
 ### Task 4: Project operations in `KanbanStore`
 
