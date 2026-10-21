@@ -10,6 +10,13 @@ const TASK_LABEL_MAX = 64
 const TASK_LINKS_MAX = 50
 const TASK_LINK_LABEL_MAX = 120
 const TASK_BLOCKED_REASON_MAX = 2000
+const QUESTION_PROMPT_MAX = 2000
+const QUESTION_NOTE_MAX = 2000
+const QUESTION_OPTIONS_MIN = 2
+const QUESTION_OPTIONS_MAX = 5
+const QUESTION_OPTION_LABEL_MAX = 200
+const QUESTION_OPTION_DETAIL_MAX = 1000
+const QUESTION_DECISIONS = ['approve', 'reject']
 const TASK_PATCH_FIELDS = new Set([
   'title',
   'description',
@@ -120,6 +127,63 @@ function validateTaskPatch(patch) {
   return patch
 }
 
+function assertInputObject(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw invalidField('input', 'must be an object')
+  }
+  return input
+}
+
+function validateQuestionPrompt(value) {
+  if (typeof value !== 'string') throw invalidField('prompt', 'must be a string')
+  if (value.length < 1 || value.length > QUESTION_PROMPT_MAX) {
+    throw invalidField('prompt', `must be 1-${QUESTION_PROMPT_MAX} characters`)
+  }
+  return value
+}
+
+function validateQuestionNote(value) {
+  if (typeof value !== 'string') throw invalidField('note', 'must be a string')
+  if (value.length > QUESTION_NOTE_MAX) {
+    throw invalidField('note', `must be at most ${QUESTION_NOTE_MAX} characters`)
+  }
+  return value
+}
+
+function validateQuestionOptions(value) {
+  if (!Array.isArray(value)) throw invalidField('options', 'must be an array')
+  if (value.length < QUESTION_OPTIONS_MIN || value.length > QUESTION_OPTIONS_MAX) {
+    throw invalidField('options', `must contain ${QUESTION_OPTIONS_MIN}-${QUESTION_OPTIONS_MAX} options`)
+  }
+  return value.map((option, index) => {
+    if (!option || typeof option !== 'object' || Array.isArray(option)) {
+      throw invalidField('options', `option ${index} must be an object`)
+    }
+    if (typeof option.id !== 'string' || option.id.length < 1) {
+      throw invalidField('options', `option ${index} must have a non-empty id`)
+    }
+    if (typeof option.label !== 'string' || option.label.length < 1 || option.label.length > QUESTION_OPTION_LABEL_MAX) {
+      throw invalidField('options', `option ${index} label must be 1-${QUESTION_OPTION_LABEL_MAX} characters`)
+    }
+    const detail = option.detail === undefined ? '' : option.detail
+    if (typeof detail !== 'string' || detail.length > QUESTION_OPTION_DETAIL_MAX) {
+      throw invalidField('options', `option ${index} detail must be a string of at most ${QUESTION_OPTION_DETAIL_MAX} characters`)
+    }
+    return { id: option.id, label: option.label, detail }
+  })
+}
+
+function validateQuestionDecision(value) {
+  if (!QUESTION_DECISIONS.includes(value)) {
+    throw invalidField('decision', `must be one of ${QUESTION_DECISIONS.join(', ')}`)
+  }
+  return value
+}
+
+function hasUnresolvedQuestion(task) {
+  return Boolean(task.pendingQuestion) && !task.questionResolution
+}
+
 export class KanbanStore {
   #tables
   #attachments
@@ -149,6 +213,14 @@ export class KanbanStore {
   #task(id) {
     const task = this.#tables.tasks.get(id)
     if (!task) throw Object.assign(new Error('Task not found'), { code: 'TASK_NOT_FOUND' })
+    return task
+  }
+
+  #mutableTask(id) {
+    const task = this.#task(id)
+    const project = this.#project(task.projectId)
+    if (project.archivedAt) throw Object.assign(new Error('Project is archived'), { code: 'PROJECT_ARCHIVED' })
+    if (task.archivedAt) throw Object.assign(new Error('Task is archived'), { code: 'TASK_ARCHIVED' })
     return task
   }
 
@@ -322,8 +394,84 @@ export class KanbanStore {
         if (patch.blockedReason === null) next.blockedSince = null
         else if (!task.blockedReason) next.blockedSince = now
       }
+      if (Object.hasOwn(patch, 'status') && next.status === 'done') {
+        if (hasUnresolvedQuestion(next) || next.blockedReason) {
+          throw Object.assign(new Error('Resolve attention before Done'), { code: 'TASK_NEEDS_ATTENTION' })
+        }
+      }
       await this.#tables.tasks.put(id, next)
       return next
+    })
+  }
+
+  askQuestion(id, input = {}) {
+    return this.#run(async () => {
+      const task = this.#mutableTask(id)
+      assertInputObject(input)
+      const { version, prompt, note = '', options } = input
+      const cleanPrompt = validateQuestionPrompt(prompt)
+      const cleanNote = validateQuestionNote(note)
+      const cleanOptions = validateQuestionOptions(options)
+      if (version !== task.version) {
+        throw Object.assign(new Error('Task changed elsewhere'), { code: 'TASK_VERSION_CONFLICT' })
+      }
+      if (hasUnresolvedQuestion(task)) {
+        throw Object.assign(new Error('Question already pending'), { code: 'QUESTION_ALREADY_PENDING' })
+      }
+      const now = this.#now()
+      const next = {
+        ...task,
+        pendingQuestion: {
+          prompt: cleanPrompt,
+          note: cleanNote,
+          options: cleanOptions,
+          selected: null,
+          createdAt: now,
+        },
+        questionResolution: null,
+        version: task.version + 1,
+        updatedAt: now,
+      }
+      await this.#tables.tasks.put(id, next)
+      return this.#summary(next)
+    })
+  }
+
+  answerQuestion(id, input = {}) {
+    return this.#run(async () => {
+      const task = this.#mutableTask(id)
+      assertInputObject(input)
+      const { version, decision, selected = null, note = '' } = input
+      const cleanDecision = validateQuestionDecision(decision)
+      const cleanNote = validateQuestionNote(note)
+      if (version !== task.version) {
+        throw Object.assign(new Error('Task changed elsewhere'), { code: 'TASK_VERSION_CONFLICT' })
+      }
+      const pending = hasUnresolvedQuestion(task)
+      if (!pending && task.status !== 'in_review') {
+        throw Object.assign(new Error('Task is not awaiting review'), { code: 'TASK_NOT_IN_REVIEW' })
+      }
+      const option = pending ? task.pendingQuestion.options.find((item) => item.id === selected) ?? null : null
+      if (pending && !option) {
+        throw Object.assign(new Error('Selected option is required'), { code: 'INVALID_FIELD', details: { field: 'selected' } })
+      }
+      const now = this.#now()
+      const next = {
+        ...task,
+        status: cleanDecision === 'approve' ? 'done' : 'backlog',
+        statusSince: now,
+        questionResolution: {
+          decision: cleanDecision,
+          optionId: option?.id ?? null,
+          optionLabel: option?.label ?? null,
+          note: cleanNote,
+          at: now,
+        },
+        version: task.version + 1,
+        updatedAt: now,
+      }
+      await this.#tables.tasks.put(id, next)
+      return this.#summary(next)
     })
   }
 
