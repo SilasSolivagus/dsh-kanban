@@ -259,7 +259,6 @@ test('task detail returns the summary with comments, attachments, and activity',
   assert.deepEqual(detail.comments.map((comment) => comment.id), ['comment-1'])
   assert.deepEqual(detail.attachments.map((attachment) => attachment.id), ['attachment-1'])
   const activityIds = detail.activity.map((event) => event.id)
-  assert.equal(activityIds.length, 2)
-  assert.ok(activityIds.includes('event-1'))
-  assert.ok(!activityIds.includes('event-2'))
+  // createTask allocates the task id ('id-1') and then the creation activity id ('id-2').
+  assert.deepEqual(activityIds, ['id-2', 'event-1'])
 })

@@ -245,7 +245,7 @@ export class KanbanStore {
       id: this.#newId(),
       taskId,
       actor: LOCAL_USER,
-      changes,
+      changes: structuredClone(changes),
       createdAt: this.#now(),
     }
     await this.#tables.activity.put(event.id, event)
@@ -475,7 +475,13 @@ export class KanbanStore {
         updatedAt: now,
       }
       await this.#tables.tasks.put(id, next)
-      await this.#activity(id, [{ field: 'pendingQuestion', before: null, after: cleanPrompt }])
+      const changes = [
+        { field: 'pendingQuestion', before: task.pendingQuestion?.prompt ?? null, after: cleanPrompt },
+      ]
+      if (next.status !== task.status) {
+        changes.push({ field: 'status', before: task.status, after: next.status })
+      }
+      await this.#activity(id, changes)
       return this.#summary(next)
     })
   }
@@ -517,10 +523,13 @@ export class KanbanStore {
         updatedAt: now,
       }
       await this.#tables.tasks.put(id, next)
-      await this.#activity(id, [
+      const changes = [
         { field: 'questionResolution', before: task.questionResolution, after: next.questionResolution },
-        { field: 'status', before: task.status, after: next.status },
-      ])
+      ]
+      if (next.status !== task.status) {
+        changes.push({ field: 'status', before: task.status, after: next.status })
+      }
+      await this.#activity(id, changes)
       return this.#summary(next)
     })
   }

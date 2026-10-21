@@ -70,7 +70,9 @@ test('task creation records one status activity with the local user', async () =
 test('addComment trims the body and stamps the local user', async () => {
   const { store, task } = await setup()
   const comment = await store.addComment(task.id, '  hello  ')
-  assert.equal(comment.id, 'id-3')
+  assert.equal(typeof comment.id, 'string')
+  assert.ok(comment.id.length > 0)
+  assert.deepEqual(store.getTaskDetail(task.id).comments.map((item) => item.id), [comment.id])
   assert.equal(comment.taskId, task.id)
   assert.equal(comment.body, 'hello')
   assert.deepEqual(comment.author, { type: 'user', id: 'local-user', name: '本地用户', avatarUrl: null })
@@ -228,6 +230,75 @@ test('askQuestion records the pending question and answerQuestion records the re
     { field: 'questionResolution', before: null, after: approved.questionResolution },
     { field: 'status', before: 'backlog', after: 'done' },
   ])
+})
+
+test('askQuestion on a Done task records the reopen status with the question', async () => {
+  const { store, task } = await setup()
+  await store.updateTask(task.id, { version: 1, status: 'done' })
+  await store.askQuestion(task.id, questionInput({ version: 2 }))
+
+  const asked = activityFor(store, task.id).at(-1)
+  assert.deepEqual(asked.changes, [
+    { field: 'pendingQuestion', before: null, after: 'Which name?' },
+    { field: 'status', before: 'done', after: 'in_review' },
+  ])
+})
+
+test('askQuestion records the previous question prompt as before', async () => {
+  const { store, task } = await setup()
+  await store.askQuestion(task.id, questionInput())
+  await store.answerQuestion(task.id, { version: 2, decision: 'reject', selected: 'a' })
+  await store.askQuestion(task.id, questionInput({ version: 3, prompt: 'Second question?' }))
+
+  const asked = activityFor(store, task.id).at(-1)
+  assert.deepEqual(asked.changes, [
+    { field: 'pendingQuestion', before: 'Which name?', after: 'Second question?' },
+  ])
+})
+
+test('answerQuestion reject on a backlog task records no false status change', async () => {
+  const { store, task } = await setup()
+  await store.askQuestion(task.id, questionInput())
+  const rejected = await store.answerQuestion(task.id, {
+    version: 2,
+    decision: 'reject',
+    selected: 'a',
+  })
+  assert.equal(rejected.status, 'backlog')
+
+  const event = activityFor(store, task.id).at(-1)
+  assert.deepEqual(event.changes, [
+    { field: 'questionResolution', before: null, after: rejected.questionResolution },
+  ])
+})
+
+test('activity snapshots changed values so later mutations cannot rewrite history', async () => {
+  const { store, task } = await setup()
+  await store.updateTask(task.id, {
+    version: 1,
+    labels: ['one'],
+    links: [{ id: 'l1', label: 'Spec', url: 'https://example.com/spec' }],
+  })
+  const detail = store.getTaskDetail(task.id).task
+  detail.labels.push('two')
+  detail.links[0].label = 'Changed'
+
+  const changes = activityFor(store, task.id).at(-1).changes
+  assert.deepEqual(changes.find((change) => change.field === 'labels').after, ['one'])
+  assert.deepEqual(changes.find((change) => change.field === 'links').after, [
+    { id: 'l1', label: 'Spec', url: 'https://example.com/spec' },
+  ])
+
+  await store.askQuestion(task.id, questionInput({ version: 2 }))
+  const approved = await store.answerQuestion(task.id, {
+    version: 3,
+    decision: 'approve',
+    selected: 'a',
+    note: 'ok',
+  })
+  const resolution = activityFor(store, task.id).at(-1).changes.find((change) => change.field === 'questionResolution')
+  approved.questionResolution.note = 'mutated'
+  assert.equal(resolution.after.note, 'ok')
 })
 
 test('archiveTask and restoreTask record archivedAt', async () => {
