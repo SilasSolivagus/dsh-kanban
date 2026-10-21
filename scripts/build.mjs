@@ -24,7 +24,7 @@ const client = await build({
   jsx: 'transform',
   jsxFactory: 'React.createElement',
   jsxFragment: 'React.Fragment',
-  loader: { '.css': 'text' },
+  loader: { '.css': 'text', '.js': 'jsx' },
   logLevel: 'info',
 })
 
