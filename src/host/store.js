@@ -17,6 +17,10 @@ const QUESTION_OPTIONS_MAX = 5
 const QUESTION_OPTION_LABEL_MAX = 200
 const QUESTION_OPTION_DETAIL_MAX = 1000
 const COMMENT_BODY_MAX = 10000
+const ATTACHMENT_FILENAME_MAX = 255
+const ATTACHMENT_CONTENT_TYPE_MAX = 200
+const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024
+const ATTACHMENT_LIMIT = 50
 const QUESTION_DECISIONS = ['approve', 'reject']
 const TASK_PATCH_FIELDS = new Set([
   'title',
@@ -192,6 +196,31 @@ function validateCommentBody(value) {
     throw invalidField('body', `must be 1-${COMMENT_BODY_MAX} characters after trimming`)
   }
   return body
+}
+
+function validateAttachmentFilename(value) {
+  if (typeof value !== 'string') throw invalidField('filename', 'must be a string')
+  const filename = value.trim()
+  if (filename.length < 1 || filename.length > ATTACHMENT_FILENAME_MAX) {
+    throw invalidField('filename', `must be 1-${ATTACHMENT_FILENAME_MAX} characters after trimming`)
+  }
+  return filename
+}
+
+function validateAttachmentContentType(value) {
+  if (typeof value !== 'string') throw invalidField('contentType', 'must be a string')
+  const contentType = value.trim()
+  if (contentType.length < 1 || contentType.length > ATTACHMENT_CONTENT_TYPE_MAX) {
+    throw invalidField('contentType', `must be 1-${ATTACHMENT_CONTENT_TYPE_MAX} characters after trimming`)
+  }
+  return contentType
+}
+
+function validateAttachmentData(value) {
+  if (typeof value !== 'string' || Buffer.from(value, 'base64').toString('base64') !== value) {
+    throw invalidField('data', 'must be canonical base64')
+  }
+  return value
 }
 
 function sameValue(left, right) {
@@ -561,6 +590,63 @@ export class KanbanStore {
       }
       await this.#tables.comments.delete(commentId)
     })
+  }
+
+  addAttachment(taskId, input = {}) {
+    return this.#run(async () => {
+      const task = this.#task(taskId)
+      const project = this.#project(task.projectId)
+      if (task.archivedAt) throw Object.assign(new Error('Task is archived'), { code: 'TASK_ARCHIVED' })
+      if (project.archivedAt) throw Object.assign(new Error('Project is archived'), { code: 'PROJECT_ARCHIVED' })
+      assertInputObject(input)
+      const filename = validateAttachmentFilename(input.filename)
+      const contentType = validateAttachmentContentType(input.contentType)
+      const data = validateAttachmentData(input.data)
+      const bytes = Buffer.from(data, 'base64')
+      if (bytes.length > ATTACHMENT_MAX_BYTES) {
+        throw Object.assign(new Error('Attachment is too large'), { code: 'ATTACHMENT_TOO_LARGE' })
+      }
+      const count = [...this.#tables.attachments.entries()].filter(([, attachment]) => attachment.taskId === taskId).length
+      if (count >= ATTACHMENT_LIMIT) {
+        throw Object.assign(new Error('Attachment limit reached'), { code: 'ATTACHMENT_LIMIT_REACHED' })
+      }
+      const ref = await this.#attachments.admitEncodedFile({ data, name: filename })
+      const attachment = {
+        id: this.#newId(),
+        taskId,
+        filename,
+        contentType,
+        size: ref.bytes,
+        storageRef: { attachmentId: ref.attachmentId, name: ref.name, bytes: ref.bytes },
+        createdAt: this.#now(),
+      }
+      await this.#tables.attachments.put(attachment.id, attachment)
+      await this.#activity(taskId, [{ field: 'attachment', before: null, after: filename }])
+      return attachment
+    })
+  }
+
+  deleteAttachment(taskId, attachmentId) {
+    return this.#run(async () => {
+      const task = this.#task(taskId)
+      const project = this.#project(task.projectId)
+      if (task.archivedAt) throw Object.assign(new Error('Task is archived'), { code: 'TASK_ARCHIVED' })
+      if (project.archivedAt) throw Object.assign(new Error('Project is archived'), { code: 'PROJECT_ARCHIVED' })
+      const attachment = this.#tables.attachments.get(attachmentId)
+      if (!attachment || attachment.taskId !== taskId) {
+        throw Object.assign(new Error('Attachment not found'), { code: 'NOT_FOUND' })
+      }
+      await this.#tables.attachments.delete(attachmentId)
+    })
+  }
+
+  readAttachment(attachmentId) {
+    const attachment = this.#tables.attachments.get(attachmentId)
+    if (!attachment) throw Object.assign(new Error('Attachment not found'), { code: 'NOT_FOUND' })
+    return {
+      attachment,
+      stream: this.#attachments.readFileStream(attachment.storageRef),
+    }
   }
 
   getTaskDetail(id) {
