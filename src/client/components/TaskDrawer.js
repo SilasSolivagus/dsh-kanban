@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import { attentionReason } from '../../shared/rules.js'
 import { PRIORITIES, STATUSES } from '../../shared/statuses.js'
 import { api } from '../api.js'
 import {
@@ -118,6 +119,7 @@ export function TaskDrawer({ taskId, projects = [], onClose, onChanged, onArchiv
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [confirm, setConfirm] = useState(null)
+  const closeBlocked = Boolean(busy) || uploading
 
   const task = detail?.task ?? null
   const project = useMemo(
@@ -129,7 +131,8 @@ export function TaskDrawer({ taskId, projects = [], onClose, onChanged, onArchiv
   const readOnly = projectArchived || taskArchived
   const controlsDisabled = Boolean(busy) || uploading || readOnly
   const hasPendingQuestion = Boolean(task?.pendingQuestion) && !task?.questionResolution
-  const isReview = task?.status === 'in_review' && !hasPendingQuestion
+  const attention = task ? task.attentionReason ?? attentionReason(task) : null
+  const isReview = attention === 'review' && !hasPendingQuestion
   const labels = Array.isArray(task?.labels) ? task.labels : []
   const links = Array.isArray(task?.links) ? task.links : []
   const comments = Array.isArray(detail?.comments) ? detail.comments : []
@@ -194,11 +197,16 @@ export function TaskDrawer({ taskId, projects = [], onClose, onChanged, onArchiv
     }
   }, [])
 
+  const requestClose = () => {
+    if (closeBlocked) return
+    onClose?.()
+  }
+
   const onKeyDown = (event) => {
     if (event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
-      onClose?.()
+      requestClose()
       return
     }
     if (event.key !== 'Tab') return
@@ -247,6 +255,7 @@ export function TaskDrawer({ taskId, projects = [], onClose, onChanged, onArchiv
     } catch (failure) {
       if (!mountedRef.current) return false
       setActionError(detailErrorText(failure, t))
+      options.onError?.(failure)
       await refreshDetail()
       return false
     } finally {
@@ -415,7 +424,11 @@ export function TaskDrawer({ taskId, projects = [], onClose, onChanged, onArchiv
         filename: file.name,
         contentType: file.type || DEFAULT_CONTENT_TYPE,
         data,
-      }))
+      }), {
+        onError: (failure) => {
+          if (mountedRef.current) setUploadError(detailErrorText(failure, t))
+        },
+      })
     } catch {
       if (mountedRef.current) setUploadError(t('attachmentReadFailed'))
     } finally {
@@ -457,7 +470,7 @@ export function TaskDrawer({ taskId, projects = [], onClose, onChanged, onArchiv
     className="dkb-drawer-layer"
     onKeyDown={onKeyDown}
     onClick={(event) => {
-      if (event.target === event.currentTarget) onClose?.()
+      if (event.target === event.currentTarget) requestClose()
     }}
   >
     <aside
@@ -488,7 +501,9 @@ export function TaskDrawer({ taskId, projects = [], onClose, onChanged, onArchiv
         <button
           type="button"
           className="dkb-modal-close"
-          onClick={onClose}
+          onClick={requestClose}
+          disabled={closeBlocked}
+          aria-disabled={closeBlocked || undefined}
           aria-label={t('close')}
           title={t('close')}
           ref={closeRef}

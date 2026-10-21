@@ -1102,7 +1102,7 @@ button.dkb-chip-project:hover {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: var(--dsw-alias-bg-mask-1);
+  background: var(--dsw-alias-bg-mask-1, rgb(15 23 42 / 45%));
   backdrop-filter: blur(var(--dsw-mask-blur, 0px));
 }
 
@@ -1377,7 +1377,7 @@ button.dkb-chip-project:hover {
   z-index: 900;
   display: flex;
   justify-content: flex-end;
-  background: var(--dsw-alias-bg-mask-1);
+  background: var(--dsw-alias-bg-mask-1, rgb(15 23 42 / 45%));
   backdrop-filter: blur(var(--dsw-mask-blur, 0px));
 }
 

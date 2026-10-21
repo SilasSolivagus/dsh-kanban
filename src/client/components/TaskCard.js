@@ -118,9 +118,9 @@ export function TaskCard({
         : null}
 
     {hasQuestion
-      ? <QuestionBlock task={task} t={t} onAnswer={onAnswer} />
+      ? <QuestionBlock task={task} t={t} onAnswer={onAnswer} readOnly={readOnly} />
       : attention === 'review'
-        ? <ReviewBlock task={task} t={t} onAnswer={onAnswer} />
+        ? <ReviewBlock task={task} t={t} onAnswer={onAnswer} readOnly={readOnly} />
         : null}
 
     <footer className="dkb-card-footer">
