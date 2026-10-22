@@ -115,14 +115,15 @@ async function main() {
       }),
     })
     if (!body) return
-    console.log(JSON.stringify(body, null, 2))
+    const result = { task: body }
     if (args.comment) {
       const comment = await request(`/tasks/${encodeURIComponent(args.id)}/comments`, {
         method: 'POST',
         body: JSON.stringify({ body: args.comment }),
       })
-      if (comment) console.log(JSON.stringify(comment, null, 2))
+      if (comment) result.comment = comment
     }
+    console.log(JSON.stringify(result, null, 2))
     return
   }
 
