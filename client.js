@@ -4558,7 +4558,7 @@ function App({ t }) {
         return;
       }
       const rootRect = root.getBoundingClientRect();
-      const safe = Math.max(18, Math.ceil(railRect.right + 28 - rootRect.left));
+      const safe = Math.max(18, Math.ceil(Math.max(railRect.right + 28, 84) - rootRect.left));
       root.style.setProperty("--dkb-rail-safe", `${safe}px`);
       root.dataset.sidebarCollapsed = "true";
     };

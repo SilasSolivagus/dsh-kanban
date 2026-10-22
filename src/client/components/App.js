@@ -124,7 +124,10 @@ export function App({ t }) {
         return
       }
       const rootRect = root.getBoundingClientRect()
-      const safe = Math.max(18, Math.ceil(railRect.right + 28 - rootRect.left))
+      // Keep the switcher at least 84px from the viewport edge. The desktop
+      // shell can place a floating action button past the rail's right edge,
+      // so measuring the rail alone is not enough on every client build.
+      const safe = Math.max(18, Math.ceil(Math.max(railRect.right + 28, 84) - rootRect.left))
       root.style.setProperty('--dkb-rail-safe', `${safe}px`)
       root.dataset.sidebarCollapsed = 'true'
     }
