@@ -4,9 +4,6 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// src/host/domain.js
-import { defineDomain, domainTable } from "@deepseek-ai/dsh-storage-domain";
-
 // node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/external.js
 var external_exports = {};
 __export(external_exports, {
@@ -19841,17 +19838,18 @@ var activitySchema = external_exports.object({
 });
 
 // src/host/domain.js
-var kanbanDomainSpec = defineDomain({
+var kanbanDomainSpec = {
   name: "dsh-kanban",
   version: 1,
+  invalidRecords: "backup-and-skip",
   tables: {
-    projects: domainTable(projectSchema),
-    tasks: domainTable(taskSchema),
-    comments: domainTable(commentSchema),
-    attachments: domainTable(attachmentSchema),
-    task_activity: domainTable(activitySchema)
+    projects: { valueSchema: projectSchema },
+    tasks: { valueSchema: taskSchema },
+    comments: { valueSchema: commentSchema },
+    attachments: { valueSchema: attachmentSchema },
+    task_activity: { valueSchema: activitySchema }
   }
-});
+};
 
 // src/shared/rules.js
 function attentionReason(task) {
