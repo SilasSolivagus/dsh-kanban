@@ -75,6 +75,13 @@ test('banzi cannot create, update another actor card, or read another project', 
 
   const read = await handleRequest(store, req('GET', `/kanban-api/tasks/${otherCard.id}`, null, banzi), actors)
   assert.equal(read.status, 403)
+
+  const banziCard = await store.createTask({ projectId: project.id, title: 'Banzi card', assigneeId: 'gb.banzi' }, shopkeeper)
+  const reassign = await handleRequest(store, req('PATCH', `/kanban-api/tasks/${banziCard.id}`, {
+    version: banziCard.version,
+    assigneeId: 'dsh.shopkeeper',
+  }, banzi), actors)
+  assert.equal(reassign.status, 403)
 })
 
 test('banzi can comment in-project and bootstrap is filtered', async () => {

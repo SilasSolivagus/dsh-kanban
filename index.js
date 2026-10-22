@@ -20784,6 +20784,9 @@ async function handleRequest(store, request, actors = createActorRegistry()) {
         if (isAgent(actor2)) {
           const detail = store.getTaskDetail(id);
           actors.assertCan(actor2, "board:update", detail.task);
+          if (Object.hasOwn(payload, "assigneeId") && !actor2.scopes.includes("board:assign")) {
+            return fail(403, "FORBIDDEN", "Agents cannot reassign cards");
+          }
           return ok(await store.updateTask(id, payload, actor2));
         }
         return ok(await store.updateTask(id, payload));
