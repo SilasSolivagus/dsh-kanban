@@ -58,6 +58,16 @@ The board is built for the loop between a human and an agent:
 | **Search and filters** | Search title, description, project and labels. Filter by project, priority, label or assignee. |
 | **DSH-native UI** | Theme tokens, `zh` / `en` locale, focus management, reduced-motion support. |
 
+## 🎬 See it in motion
+
+<p align="center">
+  <img src="docs/assets/kanban-demo.gif" alt="Opening a task, answering a question and moving it to Done" width="92%" />
+</p>
+
+<p align="center">
+  <sub>Open a card, answer the question in the drawer, approve it, and watch the card move to Done.</sub>
+</p>
+
 ## 🚀 Quick start
 
 **Requirements:** DSH `0.2.1-rc.2` or newer, Node.js 22+, pnpm 10+.

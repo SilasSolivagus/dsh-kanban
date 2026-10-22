@@ -58,6 +58,16 @@ DSH 看板是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness
 | **搜索与筛选** | 标题/描述/项目/标签搜索；项目、优先级、标签、负责人筛选 |
 | **DSH 原生体验** | 主题 token、中英文 locale、焦点管理、减少动画 |
 
+## 🎬 动起来
+
+<p align="center">
+  <img src="docs/assets/kanban-demo.gif" alt="打开任务、回答问题并移动到 Done" width="92%" />
+</p>
+
+<p align="center">
+  <sub>打开卡片 → 在抽屉里回答问题 → Approve → 卡片自动进入 Done。</sub>
+</p>
+
 ## 🚀 快速开始
 
 **要求：** DSH `0.2.1-rc.2` 或更新版本、Node.js 22+、pnpm 10+。
