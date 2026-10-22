@@ -36,6 +36,9 @@ DSH 看板是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness
 
 项目、任务、评论、附件和活动都存在 Host 的 `storageDomain` 里。浏览器不是数据源。
 
+> **Chat 管会话，看板管任务。**  
+> DSH Kanban 给 agent 一个不随会话结束而消失的任务层。
+
 这个看板围绕「人 + agent」的循环设计：
 
 1. agent 创建任务、记录阻塞，或向你提问。

@@ -36,6 +36,9 @@ DSH Kanban is a **native Cordis plugin** for [DeepSeek Harness](https://github.c
 
 Projects, tasks, comments, attachments and activity live in the Host's `storageDomain`. The browser is never the source of truth.
 
+> **Chat manages sessions. Kanban manages tasks.**  
+> DSH Kanban gives agents a task layer that outlives the conversation.
+
 The board is built for the loop between a human and an agent:
 
 1. The agent creates work, records a blocker, or asks a question.
