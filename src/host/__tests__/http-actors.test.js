@@ -3,9 +3,8 @@ import assert from 'node:assert/strict'
 import { createHttpHandler, handleRequest } from '../http.js'
 import { KanbanStore } from '../store.js'
 import { createActorRegistry } from '../actors.js'
+import { AGENTS } from './actor-fixture.js'
 import { MemoryTable } from './memory-table.js'
-
-const tokens = { 'dsh.shopkeeper': 'shop-token', 'gb.banzi': 'banzi-token' }
 
 function setup() {
   const tables = {
@@ -15,7 +14,7 @@ function setup() {
     attachments: new MemoryTable(),
     activity: new MemoryTable(),
   }
-  const actors = createActorRegistry({ tokens })
+  const actors = createActorRegistry({ agents: AGENTS })
   const store = new KanbanStore({
     tables,
     actors,
@@ -36,30 +35,30 @@ test('shopkeeper creates an assigned card; banzi updates own card', async () => 
   const created = await handleRequest(store, req('POST', '/kanban-api/tasks', {
     projectId: project.id,
     title: 'M1 card',
-    assigneeId: 'gb.banzi',
-  }, actors.get('dsh.shopkeeper')), actors)
+    assigneeId: 'builder',
+  }, actors.get('office')), actors)
   assert.equal(created.status, 201)
-  assert.equal(created.body.assignee.id, 'gb.banzi')
+  assert.equal(created.body.assignee.id, 'builder')
 
   const updated = await handleRequest(store, req('PATCH', `/kanban-api/tasks/${created.body.id}`, {
     version: created.body.version,
     status: 'in_progress',
-  }, actors.get('gb.banzi')), actors)
+  }, actors.get('builder')), actors)
   assert.equal(updated.status, 200)
   assert.equal(updated.body.status, 'in_progress')
 
   const detail = store.getTaskDetail(created.body.id)
-  assert.equal(detail.activity.at(-1).actor.id, 'gb.banzi')
+  assert.equal(detail.activity.at(-1).actor.id, 'builder')
 })
 
 test('banzi cannot create, update another actor card, or read another project', async () => {
   const { store, actors } = setup()
   const project = await store.createProject({ name: 'Dsh Kanban' })
   const other = await store.createProject({ name: 'Other' })
-  const shopkeeper = actors.get('dsh.shopkeeper')
-  const banzi = actors.get('gb.banzi')
-  const card = await store.createTask({ projectId: project.id, title: 'Shop card', assigneeId: 'dsh.shopkeeper' }, shopkeeper)
-  const otherCard = await store.createTask({ projectId: other.id, title: 'Other card', assigneeId: 'gb.banzi' }, shopkeeper)
+  const shopkeeper = actors.get('office')
+  const banzi = actors.get('builder')
+  const card = await store.createTask({ projectId: project.id, title: 'Shop card', assigneeId: 'office' }, shopkeeper)
+  const otherCard = await store.createTask({ projectId: other.id, title: 'Other card', assigneeId: 'builder' }, shopkeeper)
 
   const create = await handleRequest(store, req('POST', '/kanban-api/tasks', {
     projectId: project.id,
@@ -76,10 +75,10 @@ test('banzi cannot create, update another actor card, or read another project', 
   const read = await handleRequest(store, req('GET', `/kanban-api/tasks/${otherCard.id}`, null, banzi), actors)
   assert.equal(read.status, 403)
 
-  const banziCard = await store.createTask({ projectId: project.id, title: 'Banzi card', assigneeId: 'gb.banzi' }, shopkeeper)
+  const banziCard = await store.createTask({ projectId: project.id, title: 'Banzi card', assigneeId: 'builder' }, shopkeeper)
   const reassign = await handleRequest(store, req('PATCH', `/kanban-api/tasks/${banziCard.id}`, {
     version: banziCard.version,
-    assigneeId: 'dsh.shopkeeper',
+    assigneeId: 'office',
   }, banzi), actors)
   assert.equal(reassign.status, 403)
 })
@@ -88,15 +87,15 @@ test('banzi can comment in-project and bootstrap is filtered', async () => {
   const { store, actors } = setup()
   const project = await store.createProject({ name: 'Dsh Kanban' })
   await store.createProject({ name: 'Other' })
-  const shopkeeper = actors.get('dsh.shopkeeper')
-  const banzi = actors.get('gb.banzi')
-  const card = await store.createTask({ projectId: project.id, title: 'Commentable', assigneeId: 'gb.banzi' }, shopkeeper)
+  const shopkeeper = actors.get('office')
+  const banzi = actors.get('builder')
+  const card = await store.createTask({ projectId: project.id, title: 'Commentable', assigneeId: 'builder' }, shopkeeper)
 
   const comment = await handleRequest(store, req('POST', `/kanban-api/tasks/${card.id}/comments`, {
     body: '收到',
   }, banzi), actors)
   assert.equal(comment.status, 201)
-  assert.equal(comment.body.author.id, 'gb.banzi')
+  assert.equal(comment.body.author.id, 'builder')
 
   const boot = await handleRequest(store, req('GET', '/kanban-api/bootstrap', null, banzi), actors)
   assert.equal(boot.status, 200)

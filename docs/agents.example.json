@@ -1,0 +1,20 @@
+{
+  "agents": [
+    {
+      "id": "office",
+      "name": "Office",
+      "role": "office",
+      "projects": ["*"],
+      "scopes": ["board:read", "board:create", "board:assign", "board:update:any", "board:comment"],
+      "token": "replace-with-a-random-token"
+    },
+    {
+      "id": "builder",
+      "name": "Builder",
+      "role": "builder",
+      "projects": ["dsh-kanban"],
+      "scopes": ["board:read", "board:update:own", "board:comment"],
+      "token": "replace-with-a-random-token"
+    }
+  ]
+}

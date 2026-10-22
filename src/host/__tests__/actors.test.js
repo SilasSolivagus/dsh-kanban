@@ -3,14 +3,10 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createActorRegistry, loadTokens, LOCAL_USER } from '../actors.js'
+import { createActorRegistry, loadAgents, LOCAL_USER } from '../actors.js'
+import { AGENTS } from './actor-fixture.js'
 
-const tokens = {
-  'dsh.shopkeeper': 'shop-token',
-  'gb.banzi': 'banzi-token',
-}
-
-function withTokenFile(contents, fn) {
+function withConfigFile(contents, fn) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-kanban-agents-'))
   try {
     const file = join(dir, 'kanban-agents.json')
@@ -22,111 +18,102 @@ function withTokenFile(contents, fn) {
 }
 
 test('no bearer resolves to local human', () => {
-  const registry = createActorRegistry({ tokens })
+  const registry = createActorRegistry({ agents: AGENTS })
   assert.equal(registry.resolve({}).id, LOCAL_USER.id)
 })
 
-test('valid bearer resolves agent', () => {
-  const registry = createActorRegistry({ tokens })
-  const actor = registry.resolve({ authorization: 'Bearer banzi-token' })
-  assert.equal(actor.id, 'gb.banzi')
-  assert.equal(actor.name, '扳子')
+test('valid bearer resolves the configured agent, without leaking its token', () => {
+  const registry = createActorRegistry({ agents: AGENTS })
+  const actor = registry.resolve({ authorization: 'Bearer builder-token' })
+  assert.equal(actor.id, 'builder')
+  assert.equal(actor.name, 'Builder')
+  assert.equal('token' in actor, false)
+  assert.equal('token' in registry.list()[1], false)
 })
 
 test('invalid bearer resolves null', () => {
-  const registry = createActorRegistry({ tokens })
+  const registry = createActorRegistry({ agents: AGENTS })
   assert.equal(registry.resolve({ authorization: 'Bearer nope' }), null)
 })
 
 test('non-bearer authorization resolves null', () => {
-  const registry = createActorRegistry({ tokens })
-  assert.equal(registry.resolve({ authorization: 'Basic banzi-token' }), null)
+  const registry = createActorRegistry({ agents: AGENTS })
+  assert.equal(registry.resolve({ authorization: 'Basic builder-token' }), null)
 })
 
-test('token whose actor is unknown resolves null', () => {
-  const registry = createActorRegistry({ tokens: { 'ghost.actor': 'ghost-token' } })
-  assert.equal(registry.resolve({ authorization: 'Bearer ghost-token' }), null)
-})
-
-test('banzi can update own card only', () => {
-  const registry = createActorRegistry({ tokens })
-  const banzi = registry.get('gb.banzi')
-  assert.doesNotThrow(() => registry.assertCan(banzi, 'board:update', {
+test('builder can update own card only', () => {
+  const registry = createActorRegistry({ agents: AGENTS })
+  const builder = registry.get('builder')
+  assert.doesNotThrow(() => registry.assertCan(builder, 'board:update', {
     projectId: 'dsh-kanban',
-    assignee: { id: 'gb.banzi' },
+    assignee: { id: 'builder' },
   }))
-  assert.throws(() => registry.assertCan(banzi, 'board:update', {
+  assert.throws(() => registry.assertCan(builder, 'board:update', {
     projectId: 'dsh-kanban',
-    assignee: { id: 'dsh.shopkeeper' },
+    assignee: { id: 'office' },
   }), (error) => error.code === 'FORBIDDEN')
 })
 
-test('banzi cannot update a card in another project', () => {
-  const registry = createActorRegistry({ tokens })
-  const banzi = registry.get('gb.banzi')
-  assert.throws(() => registry.assertCan(banzi, 'board:update', {
+test('builder cannot update a card in another project', () => {
+  const registry = createActorRegistry({ agents: AGENTS })
+  const builder = registry.get('builder')
+  assert.throws(() => registry.assertCan(builder, 'board:update', {
     projectId: 'other-project',
-    assignee: { id: 'gb.banzi' },
+    assignee: { id: 'builder' },
   }), (error) => error.code === 'FORBIDDEN')
 })
 
-test('shopkeeper can update any card in any project', () => {
-  const registry = createActorRegistry({ tokens })
-  const shopkeeper = registry.get('dsh.shopkeeper')
-  assert.doesNotThrow(() => registry.assertCan(shopkeeper, 'board:update', {
+test('office can update any card in any project', () => {
+  const registry = createActorRegistry({ agents: AGENTS })
+  const office = registry.get('office')
+  assert.doesNotThrow(() => registry.assertCan(office, 'board:update', {
     projectId: 'other-project',
-    assignee: { id: 'gb.banzi' },
+    assignee: { id: 'builder' },
   }))
 })
 
 test('local user is never restricted', () => {
-  const registry = createActorRegistry({ tokens })
+  const registry = createActorRegistry({ agents: AGENTS })
   assert.doesNotThrow(() => registry.assertCan(registry.resolve({}), 'board:update', {
     projectId: 'other-project',
-    assignee: { id: 'gb.banzi' },
+    assignee: { id: 'builder' },
   }))
 })
 
-test('shopkeeper can create a card in any project', () => {
-  const registry = createActorRegistry({ tokens })
-  const shopkeeper = registry.get('dsh.shopkeeper')
-  assert.doesNotThrow(() => registry.assertCan(shopkeeper, 'board:create', {
-    projectId: 'dsh-kanban',
-  }))
-  assert.doesNotThrow(() => registry.assertCan(shopkeeper, 'board:create', {
-    projectId: 'other-project',
-  }))
+test('office can create a card in any project', () => {
+  const registry = createActorRegistry({ agents: AGENTS })
+  const office = registry.get('office')
+  assert.doesNotThrow(() => registry.assertCan(office, 'board:create', { projectId: 'dsh-kanban' }))
+  assert.doesNotThrow(() => registry.assertCan(office, 'board:create', { projectId: 'other-project' }))
 })
 
-test('banzi cannot create a card and can comment only inside dsh-kanban', () => {
-  const registry = createActorRegistry({ tokens })
-  const banzi = registry.get('gb.banzi')
-  assert.throws(() => registry.assertCan(banzi, 'board:create', {
+test('builder cannot create and can comment only inside its project', () => {
+  const registry = createActorRegistry({ agents: AGENTS })
+  const builder = registry.get('builder')
+  assert.throws(() => registry.assertCan(builder, 'board:create', { projectId: 'dsh-kanban' }), (error) => error.code === 'FORBIDDEN')
+  assert.doesNotThrow(() => registry.assertCan(builder, 'board:comment', {
     projectId: 'dsh-kanban',
-  }), (error) => error.code === 'FORBIDDEN')
-  assert.doesNotThrow(() => registry.assertCan(banzi, 'board:comment', {
-    projectId: 'dsh-kanban',
-    assignee: { id: 'dsh.shopkeeper' },
+    assignee: { id: 'office' },
   }))
-  assert.throws(() => registry.assertCan(banzi, 'board:comment', {
+  assert.throws(() => registry.assertCan(builder, 'board:comment', {
     projectId: 'other-project',
-    assignee: { id: 'dsh.shopkeeper' },
+    assignee: { id: 'office' },
   }), (error) => error.code === 'FORBIDDEN')
 })
 
-test('tokenFile supplies tokens when tokens are not passed', () => {
-  withTokenFile({ 'gb.banzi': 'from-file' }, (file) => {
-    const registry = createActorRegistry({ tokenFile: file })
-    assert.equal(registry.resolve({ authorization: 'Bearer from-file' }).id, 'gb.banzi')
+test('agents can be loaded from a config file', () => {
+  withConfigFile({ agents: AGENTS }, (file) => {
+    const registry = createActorRegistry({ agents: loadAgents(file) })
+    assert.equal(registry.resolve({ authorization: 'Bearer builder-token' }).id, 'builder')
   })
 })
 
-test('loadTokens prefers DSH_KANBAN_AGENT_TOKENS_FILE', () => {
-  withTokenFile({ 'gb.banzi': 'env-token' }, (file) => {
+test('loadAgents prefers DSH_KANBAN_AGENT_TOKENS_FILE', () => {
+  withConfigFile({ agents: AGENTS }, (file) => {
     const previous = process.env.DSH_KANBAN_AGENT_TOKENS_FILE
     process.env.DSH_KANBAN_AGENT_TOKENS_FILE = file
     try {
-      assert.deepEqual(loadTokens(), { 'gb.banzi': 'env-token' })
+      assert.equal(loadAgents()[1].id, 'builder')
     } finally {
       if (previous === undefined) delete process.env.DSH_KANBAN_AGENT_TOKENS_FILE
       else process.env.DSH_KANBAN_AGENT_TOKENS_FILE = previous
@@ -134,6 +121,6 @@ test('loadTokens prefers DSH_KANBAN_AGENT_TOKENS_FILE', () => {
   })
 })
 
-test('loadTokens returns an empty map for a missing file', () => {
-  assert.deepEqual(loadTokens('/nonexistent/dsh-kanban-agents.json'), {})
+test('loadAgents returns an empty list for a missing or invalid file', () => {
+  assert.deepEqual(loadAgents('/nonexistent/dsh-kanban-agents.json'), [])
 })

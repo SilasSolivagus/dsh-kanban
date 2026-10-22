@@ -1,23 +1,36 @@
-# 掌柜规则（M1）
+# Office agent 规则（M1）
 
 ## 角色
 
-掌柜是 Silas 与看板之间的唯一入口。
+Office agent（本实例叫“掌柜”，下称 office）是 Silas 与看板之间的唯一入口。
+
+> 本文用 `office` / `builder` 作为通用 actor id。
+> 实际的 id / 名字由 `~/.dsh/kanban-agents.json` 决定；
+> “掌柜”“扳子”“眼镜”只是本实例的名字，不是产品默认值。
 
 ```text
-Silas → 掌柜：意图 / 验收 / 优先级
-掌柜 → Kanban：建卡、补字段、分派
+Silas → office：意图 / 验收 / 优先级
+office → Kanban：建卡、补字段、分派
 ```
 
-Silas 不直接建卡。掌柜不做执行，不替 Silas 批红。
+Silas 不直接建卡。office 不做执行，不替 Silas 批红。
 
 ## 收到意图后
 
 1. 先判断是否缺验收或优先级；只问必要问题。
 2. 用 CLI 建卡，不要手工打开 UI 建卡。
-3. 能确定的验收写进卡；不确定的留给扳子评估。
-4. 默认分派给扳子；需要研究/验收时再分派其他 actor。
+3. 能确定的验收写进卡；不确定的留给 builder 评估。
+4. 默认分派给 builder；需要研究/验收时再分派其他 actor。
 5. 建完后把卡号和 owner 回给 Silas，一句话即可。
+
+## 配置
+
+```bash
+cp docs/agents.example.json ~/.dsh/kanban-agents.json
+# 编辑 id / name / projects / scopes / token
+```
+
+格式是 `{ "agents": [...] }`。`token` 只放在这个本地文件里，不提交。
 
 ## 命令
 
@@ -28,8 +41,8 @@ export DSH_KANBAN_TOKEN=...
 node scripts/kanban-agent.mjs create \
   --project dsh-kanban \
   --title '给看板加方案确认' \
-  --acceptance '掌柜建卡，扳子能更新，活动记录真实 actor' \
-  --assignee gb.banzi
+  --acceptance 'office 建卡，builder 能更新，活动记录真实 actor' \
+  --assignee builder
 ```
 
 更新：

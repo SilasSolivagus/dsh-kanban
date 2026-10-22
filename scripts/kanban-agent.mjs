@@ -15,7 +15,7 @@ Commands:
   comment --id <task-id> --body <text>
 
 Examples:
-  create --project dsh-kanban --title '给看板加方案确认' --acceptance '掌柜建卡，扳子能更新' --assignee gb.banzi
+  create --project dsh-kanban --title '给看板加方案确认' --acceptance 'office 建卡，builder 能更新' --assignee builder
   update --id <id> --status in_progress --comment '收到'`)
 }
 
