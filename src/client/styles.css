@@ -1977,3 +1977,20 @@ button.dkb-chip-project:hover {
     animation: none;
   }
 }
+
+/*
+ * The DSH shell overlays a compact sidebar rail over the main column when the
+ * sidebar is collapsed. Reserve its width so the project switcher and board
+ * heading are never covered by the rail's toggle.
+ */
+[data-sidebar-collapsed="true"] .dkb-header,
+[data-sidebar-collapsed="true"] .dkb-main {
+  padding-left: 54px;
+}
+
+@media (max-width: 720px) {
+  [data-sidebar-collapsed="true"] .dkb-header,
+  [data-sidebar-collapsed="true"] .dkb-main {
+    padding-left: 50px;
+  }
+}
