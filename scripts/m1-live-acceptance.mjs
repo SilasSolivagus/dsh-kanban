@@ -12,6 +12,16 @@ const config = JSON.parse(readFileSync(configFile, 'utf8'))
 const agents = Array.isArray(config) ? config : config.agents
 assert.ok(Array.isArray(agents), `${configFile} must contain { "agents": [...] }`)
 
+const probe = await fetch(`${base}/bootstrap`, {
+  headers: { authorization: 'Bearer definitely-not-a-valid-token' },
+})
+if (probe.status !== 401) {
+  throw new Error(
+    `Current live plugin is not M1 (invalid bearer returned ${probe.status}, expected 401). ` +
+    'The GUI is still loading the main branch. Point the profile link to the M1 worktree and restart DSH before running this acceptance.'
+  )
+}
+
 const office = agents.find((agent) => agent.role === 'office')
 const builder = agents.find((agent) => agent.role === 'builder')
 assert.ok(office?.token, 'config needs an office agent with a token')
