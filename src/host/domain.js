@@ -11,7 +11,7 @@ import {
 // bundle depend on a module that lives inside the DSH application, outside
 // this package's resolution root.
 export const kanbanDomainSpec = {
-  name: 'dsh-kanban',
+  name: 'dsh_kanban',
   version: 1,
   invalidRecords: 'backup-and-skip',
   tables: {

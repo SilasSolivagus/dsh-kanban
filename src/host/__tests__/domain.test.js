@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { kanbanDomainSpec } from '../domain.js'
 
 test('domain spec is a plain five-table declaration', () => {
-  assert.equal(kanbanDomainSpec.name, 'dsh-kanban')
+  assert.equal(kanbanDomainSpec.name, 'dsh_kanban')
   assert.equal(kanbanDomainSpec.version, 1)
   assert.equal(kanbanDomainSpec.invalidRecords, 'backup-and-skip')
   assert.deepEqual(Object.keys(kanbanDomainSpec.tables).sort(), [

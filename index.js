@@ -19839,7 +19839,7 @@ var activitySchema = external_exports.object({
 
 // src/host/domain.js
 var kanbanDomainSpec = {
-  name: "dsh-kanban",
+  name: "dsh_kanban",
   version: 1,
   invalidRecords: "backup-and-skip",
   tables: {

@@ -156,7 +156,7 @@ dsh-kanban/
 
 ## 5. Data Model
 
-Domain name: `dsh-kanban`. Domain version: `1`.
+Domain name: `dsh_kanban` (storage unit names allow lowercase letters, digits and underscores). Domain version: `1`.
 
 Tables:
 
