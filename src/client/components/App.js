@@ -524,6 +524,7 @@ export function App({ t }) {
   return <>
     <style>{styles}</style>
     <div className="dkb" ref={rootRef}>
+      <div className="dkb-drag-strip" aria-hidden="true" />
       <header className="dkb-header">
         <ProjectSwitcher
           projects={activeProjects}

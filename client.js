@@ -4467,14 +4467,27 @@ button.dkb-chip-project:hover {
 }
 
 /*
- * The DSH shell overlays a compact sidebar rail over the main column when the
- * sidebar is collapsed. App measures the live rail and writes --dkb-rail-safe
- * on .dkb; this keeps the project switcher and board heading clear even when
- * the desktop client uses a different rail width from the web build.
+ * DSH publishes the window-chrome safe areas on the root/frame:
+ * --dsh-frame-top-clearance covers the native titlebar and drag strip, and
+ * --dsh-frame-leading-clearance covers traffic lights / the collapsed rail.
+ * Web has neither and falls back to the measured rail value.
  */
-.dkb[data-sidebar-collapsed="true"] .dkb-header,
-.dkb[data-sidebar-collapsed="true"] .dkb-main {
-  padding-left: var(--dkb-rail-safe, 54px);
+.dkb-drag-strip {
+  flex: none;
+  height: var(--dsh-frame-top-clearance, 0px);
+  -webkit-app-region: drag;
+}
+
+html[data-fullscreen] .dkb-drag-strip {
+  height: 0;
+}
+
+.dkb-header {
+  padding-left: max(18px, var(--dsh-frame-leading-clearance, 0px), var(--dkb-rail-safe, 0px));
+}
+
+.dkb-main {
+  padding-left: max(20px, var(--dsh-frame-leading-clearance, 0px), var(--dkb-rail-safe, 0px));
 }
 `;
 
@@ -4928,7 +4941,7 @@ function App({ t }) {
     }
     return null;
   };
-  return /* @__PURE__ */ import_react10.default.createElement(import_react10.default.Fragment, null, /* @__PURE__ */ import_react10.default.createElement("style", null, styles_default), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb", ref: rootRef }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dkb-header" }, /* @__PURE__ */ import_react10.default.createElement(
+  return /* @__PURE__ */ import_react10.default.createElement(import_react10.default.Fragment, null, /* @__PURE__ */ import_react10.default.createElement("style", null, styles_default), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb", ref: rootRef }, /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb-drag-strip", "aria-hidden": "true" }), /* @__PURE__ */ import_react10.default.createElement("header", { className: "dkb-header" }, /* @__PURE__ */ import_react10.default.createElement(
     ProjectSwitcher,
     {
       projects: activeProjects,
