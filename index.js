@@ -19877,8 +19877,79 @@ function nextIdentifier(project, tasks) {
   return `${prefix}-${Math.max(project.nextTaskNumber, max + 1)}`;
 }
 
-// src/host/store.js
+// src/host/actors.js
+import { createHash, timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 var LOCAL_USER = { type: "user", id: "local-user", name: "\u672C\u5730\u7528\u6237", avatarUrl: null };
+var AGENT_TOKEN_ENV = "DSH_KANBAN_AGENT_TOKENS_FILE";
+function digest(value) {
+  return createHash("sha256").update(value).digest();
+}
+function forbidden() {
+  return Object.assign(new Error("Forbidden"), { code: "FORBIDDEN" });
+}
+function sanitize(agent) {
+  const { token, ...actor2 } = agent;
+  return {
+    ...actor2,
+    type: "agent",
+    avatarUrl: actor2.avatarUrl ?? null
+  };
+}
+function validAgent(agent) {
+  return Boolean(
+    agent && typeof agent === "object" && typeof agent.id === "string" && agent.id.length > 0 && typeof agent.name === "string" && agent.name.length > 0 && Array.isArray(agent.projects) && Array.isArray(agent.scopes)
+  );
+}
+function loadAgents(file2 = process.env[AGENT_TOKEN_ENV] || join(homedir(), ".dsh", "kanban-agents.json")) {
+  try {
+    const parsed = JSON.parse(readFileSync(file2, "utf8"));
+    const agents = Array.isArray(parsed) ? parsed : parsed?.agents;
+    if (!Array.isArray(agents)) return [];
+    return agents.filter(validAgent);
+  } catch {
+    return [];
+  }
+}
+function createActorRegistry({ agents = loadAgents() } = {}) {
+  const definitions = agents.filter(validAgent);
+  const byId = new Map(definitions.map((agent) => [agent.id, sanitize(agent)]));
+  const tokenById = new Map(
+    definitions.filter((agent) => typeof agent.token === "string" && agent.token.length > 0).map((agent) => [agent.id, agent.token])
+  );
+  function resolve(headers = {}) {
+    const auth = headers.authorization;
+    if (!auth) return LOCAL_USER;
+    const match = /^Bearer\s+(.+)$/i.exec(auth);
+    if (!match) return null;
+    const tokenDigest = digest(match[1]);
+    for (const [id, expected] of tokenById) {
+      if (digest(expected).length !== tokenDigest.length) continue;
+      if (timingSafeEqual(digest(expected), tokenDigest)) return byId.get(id) ?? null;
+    }
+    return null;
+  }
+  function assertCan(actor2, action, resource = {}) {
+    if (!actor2) throw forbidden();
+    if (actor2.type === "user") return;
+    const scopes = actor2.scopes ?? [];
+    const projects = actor2.projects ?? [];
+    const projectAllowed = projects.includes("*") || projects.includes(resource.projectId);
+    const owns = resource.assignee?.id === actor2.id;
+    const allowed = projectAllowed && (scopes.includes(action) || action === "board:update" && (scopes.includes("board:update:any") || scopes.includes("board:update:own") && owns) || action === "board:create" && scopes.includes("board:create"));
+    if (!allowed) throw forbidden();
+  }
+  return {
+    resolve,
+    get: (id) => byId.get(id),
+    list: () => [LOCAL_USER, ...byId.values()],
+    assertCan
+  };
+}
+
+// src/host/store.js
 var CURRENT_USER_TARGET = "current-user";
 var TASK_TITLE_MAX = 240;
 var TASK_DESCRIPTION_MAX = 1e5;
@@ -19909,6 +19980,7 @@ var TASK_PATCH_FIELDS = /* @__PURE__ */ new Set([
   "priority",
   "labels",
   "assigneeTarget",
+  "assigneeId",
   "sortOrder",
   "blockedReason",
   "links"
@@ -20109,12 +20181,20 @@ var KanbanStore = class {
   #attachments;
   #now;
   #newId;
+  #actors;
   #tail = Promise.resolve();
-  constructor({ tables, attachments, now = () => (/* @__PURE__ */ new Date()).toISOString(), newId = () => crypto.randomUUID() }) {
+  constructor({ tables, attachments, actors = null, now = () => (/* @__PURE__ */ new Date()).toISOString(), newId = () => crypto.randomUUID() }) {
     this.#tables = tables;
     this.#attachments = attachments;
+    this.#actors = actors;
     this.#now = now;
     this.#newId = newId;
+  }
+  #resolveAssignee(assigneeId) {
+    if (assigneeId === void 0 || assigneeId === null) return LOCAL_USER;
+    const actor2 = this.#actors?.get(assigneeId);
+    if (!actor2) throw Object.assign(new Error("Unknown assignee"), { code: "INVALID_ASSIGNEE" });
+    return actor2;
   }
   #run(operation) {
     const next = this.#tail.then(operation);
@@ -20139,11 +20219,11 @@ var KanbanStore = class {
     if (task.archivedAt) throw Object.assign(new Error("Task is archived"), { code: "TASK_ARCHIVED" });
     return task;
   }
-  async #activity(taskId, changes) {
+  async #activity(taskId, changes, actor2 = LOCAL_USER) {
     const event = {
       id: this.#newId(),
       taskId,
-      actor: LOCAL_USER,
+      actor: actor2,
       changes: structuredClone(changes),
       createdAt: this.#now()
     };
@@ -20228,7 +20308,7 @@ var KanbanStore = class {
       await this.#tables.projects.delete(id);
     });
   }
-  createTask(input2 = {}) {
+  createTask(input2 = {}, actor2 = LOCAL_USER) {
     return this.#run(async () => {
       if (!input2 || typeof input2 !== "object" || Array.isArray(input2)) {
         throw invalidField("input", "must be an object");
@@ -20241,6 +20321,7 @@ var KanbanStore = class {
         priority = "none",
         labels = [],
         assigneeTarget = CURRENT_USER_TARGET,
+        assigneeId,
         sortOrder,
         links = []
       } = input2;
@@ -20253,6 +20334,7 @@ var KanbanStore = class {
       const cleanLabels = validateLabels(labels);
       const cleanLinks = validateLinks(links);
       validateAssigneeTarget(assigneeTarget);
+      const assignee = this.#resolveAssignee(assigneeId);
       const cleanSortOrder = sortOrder === void 0 ? void 0 : validateSortOrder(sortOrder);
       const tasks = [...this.#tables.tasks.entries()].map(([, task2]) => task2);
       const identifier = nextIdentifier(project, tasks);
@@ -20268,7 +20350,7 @@ var KanbanStore = class {
         status: cleanStatus,
         priority: cleanPriority,
         labels: cleanLabels,
-        assignee: LOCAL_USER,
+        assignee,
         sortOrder: order,
         statusSince: timestamp,
         blockedReason: null,
@@ -20287,11 +20369,11 @@ var KanbanStore = class {
         nextTaskNumber: Number(identifier.split("-").at(-1)) + 1,
         updatedAt: timestamp
       });
-      await this.#activity(task.id, [{ field: "status", before: null, after: task.status }]);
+      await this.#activity(task.id, [{ field: "status", before: null, after: task.status }], actor2);
       return task;
     });
   }
-  updateTask(id, patch) {
+  updateTask(id, patch, actor2 = LOCAL_USER) {
     return this.#run(async () => {
       const task = this.#task(id);
       const project = this.#project(task.projectId);
@@ -20312,6 +20394,7 @@ var KanbanStore = class {
       if (Object.hasOwn(patch, "sortOrder")) next.sortOrder = validateSortOrder(patch.sortOrder);
       if (Object.hasOwn(patch, "blockedReason")) next.blockedReason = validateBlockedReason(patch.blockedReason);
       if (Object.hasOwn(patch, "assigneeTarget")) validateAssigneeTarget(patch.assigneeTarget);
+      if (Object.hasOwn(patch, "assigneeId")) next.assignee = this.#resolveAssignee(patch.assigneeId);
       next.version = task.version + 1;
       next.updatedAt = now;
       if (Object.hasOwn(patch, "status") && next.status !== task.status) next.statusSince = now;
@@ -20335,8 +20418,9 @@ var KanbanStore = class {
       record2("labels", task.labels, next.labels);
       record2("links", task.links, next.links);
       record2("blockedReason", task.blockedReason, next.blockedReason);
+      record2("assignee", task.assignee, next.assignee);
       await this.#tables.tasks.put(id, next);
-      if (changes.length) await this.#activity(id, changes);
+      if (changes.length) await this.#activity(id, changes, actor2);
       return next;
     });
   }
@@ -20428,7 +20512,7 @@ var KanbanStore = class {
       return this.#summary(next);
     });
   }
-  addComment(taskId, body) {
+  addComment(taskId, body, actor2 = LOCAL_USER) {
     return this.#run(async () => {
       const task = this.#mutableTask(taskId);
       const cleanBody = validateCommentBody(body);
@@ -20437,7 +20521,7 @@ var KanbanStore = class {
         id: this.#newId(),
         taskId: task.id,
         body: cleanBody,
-        author: LOCAL_USER,
+        author: actor2,
         createdAt: timestamp,
         updatedAt: timestamp
       };
@@ -20577,6 +20661,8 @@ var KanbanStore = class {
 var JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
 var NO_STORE_HEADERS = { "cache-control": "no-store" };
 var STATUS_BY_CODE = {
+  FORBIDDEN: 403,
+  UNAUTHORIZED: 401,
   PROJECT_ARCHIVED: 403,
   TASK_NOT_FOUND: 404,
   PROJECT_NOT_FOUND: 404,
@@ -20619,21 +20705,50 @@ function decodePathSegment(segment) {
     throw Object.assign(new Error("Malformed URL encoding"), { code: "INVALID_PATH" });
   }
 }
-async function handleRequest(store, request) {
+function isAgent(actor2) {
+  return actor2?.type === "agent";
+}
+function assertRead(store, actors, actor2, id) {
+  const detail = store.getTaskDetail(id);
+  actors.assertCan(actor2, "board:read", detail.task);
+  return detail;
+}
+function filteredBootstrap(store, actors, actor2) {
+  const data = store.bootstrap();
+  if (!isAgent(actor2)) return data;
+  const visibleProjects = data.projects.filter((project) => {
+    try {
+      actors.assertCan(actor2, "board:read", { projectId: project.id });
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  const visibleIds = new Set(visibleProjects.map((project) => project.id));
+  return {
+    projects: visibleProjects,
+    tasks: data.tasks.filter((task) => visibleIds.has(task.projectId))
+  };
+}
+async function handleRequest(store, request, actors = createActorRegistry()) {
   const { method, pathname, body, searchParams = new URLSearchParams() } = request;
+  const actor2 = request.actor ?? LOCAL_USER;
   const payload = body ?? {};
   try {
-    if (method === "GET" && pathname === "/kanban-api/bootstrap") return ok(store.bootstrap());
+    if (method === "GET" && pathname === "/kanban-api/bootstrap") return ok(filteredBootstrap(store, actors, actor2));
     if (method === "POST" && pathname === "/kanban-api/projects") {
+      if (isAgent(actor2)) return fail(403, "FORBIDDEN", "Agents cannot create projects");
       return ok(await store.createProject(payload), 201);
     }
     const projectAction = /^\/kanban-api\/projects\/([^/]+)\/(archive|restore)$/.exec(pathname);
     if (projectAction && method === "POST") {
+      if (isAgent(actor2)) return fail(403, "FORBIDDEN", "Agents cannot manage projects");
       const id = decodePathSegment(projectAction[1]);
       return ok(await (projectAction[2] === "archive" ? store.archiveProject(id) : store.restoreProject(id)));
     }
     const projectMatch = /^\/kanban-api\/projects\/([^/]+)$/.exec(pathname);
     if (projectMatch) {
+      if (isAgent(actor2)) return fail(403, "FORBIDDEN", "Agents cannot manage projects");
       const id = decodePathSegment(projectMatch[1]);
       if (method === "PATCH") return ok(await store.renameProject(id, payload.name));
       if (method === "DELETE") {
@@ -20642,16 +20757,43 @@ async function handleRequest(store, request) {
       }
     }
     if (method === "POST" && pathname === "/kanban-api/tasks") {
+      if (isAgent(actor2)) {
+        actors.assertCan(actor2, "board:create", { projectId: payload.projectId });
+        return ok(await store.createTask(payload, actor2), 201);
+      }
       return ok(await store.createTask(payload), 201);
     }
     if (method === "GET" && pathname === "/kanban-api/archived-tasks") {
-      return ok({ tasks: store.listArchivedTasks(searchParams.get("projectId") ?? void 0) });
+      const tasks = store.listArchivedTasks(searchParams.get("projectId") ?? void 0);
+      if (!isAgent(actor2)) return ok({ tasks });
+      return ok({ tasks: tasks.filter((task) => {
+        try {
+          actors.assertCan(actor2, "board:read", task);
+          return true;
+        } catch {
+          return false;
+        }
+      }) });
     }
     const taskMatch = /^\/kanban-api\/tasks\/([^/]+)$/.exec(pathname);
     if (taskMatch) {
       const id = decodePathSegment(taskMatch[1]);
-      if (method === "GET") return ok(store.getTaskDetail(id));
-      if (method === "PATCH") return ok(await store.updateTask(id, payload));
+      if (method === "GET") {
+        if (isAgent(actor2)) return ok(assertRead(store, actors, actor2, id));
+        return ok(store.getTaskDetail(id));
+      }
+      if (method === "PATCH") {
+        if (isAgent(actor2)) {
+          const detail = store.getTaskDetail(id);
+          actors.assertCan(actor2, "board:update", detail.task);
+          if (Object.hasOwn(payload, "assigneeId") && !actor2.scopes.includes("board:assign")) {
+            return fail(403, "FORBIDDEN", "Agents cannot reassign cards");
+          }
+          return ok(await store.updateTask(id, payload, actor2));
+        }
+        return ok(await store.updateTask(id, payload));
+      }
+      if (isAgent(actor2)) return fail(403, "FORBIDDEN", "Agents cannot delete tasks");
       if (method === "DELETE") {
         await store.deleteTask(id, payload);
         return noContent();
@@ -20659,6 +20801,7 @@ async function handleRequest(store, request) {
     }
     const taskAction = /^\/kanban-api\/tasks\/([^/]+)\/(archive|restore|question|answer)$/.exec(pathname);
     if (taskAction && method === "POST") {
+      if (isAgent(actor2)) return fail(403, "FORBIDDEN", "Agents cannot manage task lifecycle");
       const id = decodePathSegment(taskAction[1]);
       if (taskAction[2] === "archive") return ok(await store.archiveTask(id, payload));
       if (taskAction[2] === "restore") return ok(await store.restoreTask(id, payload));
@@ -20667,27 +20810,47 @@ async function handleRequest(store, request) {
     }
     const activityMatch = /^\/kanban-api\/tasks\/([^/]+)\/activity$/.exec(pathname);
     if (activityMatch && method === "GET") {
-      return ok(store.getTaskDetail(decodePathSegment(activityMatch[1])).activity);
+      const id = decodePathSegment(activityMatch[1]);
+      if (isAgent(actor2)) return ok(assertRead(store, actors, actor2, id).activity);
+      return ok(store.getTaskDetail(id).activity);
     }
     const commentMatch = /^\/kanban-api\/tasks\/([^/]+)\/comments$/.exec(pathname);
     if (commentMatch) {
       const id = decodePathSegment(commentMatch[1]);
-      if (method === "GET") return ok(store.getTaskDetail(id).comments);
-      if (method === "POST") return ok(await store.addComment(id, payload.body), 201);
+      if (method === "GET") {
+        if (isAgent(actor2)) return ok(assertRead(store, actors, actor2, id).comments);
+        return ok(store.getTaskDetail(id).comments);
+      }
+      if (method === "POST") {
+        if (isAgent(actor2)) {
+          const detail = assertRead(store, actors, actor2, id);
+          actors.assertCan(actor2, "board:comment", detail.task);
+          return ok(await store.addComment(id, payload.body, actor2), 201);
+        }
+        return ok(await store.addComment(id, payload.body), 201);
+      }
     }
     const commentDelete = /^\/kanban-api\/tasks\/([^/]+)\/comments\/([^/]+)$/.exec(pathname);
     if (commentDelete && method === "DELETE") {
+      if (isAgent(actor2)) return fail(403, "FORBIDDEN", "Agents cannot delete comments");
       await store.deleteComment(decodePathSegment(commentDelete[1]), decodePathSegment(commentDelete[2]));
       return noContent();
     }
     const attachmentMatch = /^\/kanban-api\/tasks\/([^/]+)\/attachments$/.exec(pathname);
     if (attachmentMatch) {
       const id = decodePathSegment(attachmentMatch[1]);
-      if (method === "GET") return ok(store.getTaskDetail(id).attachments);
-      if (method === "POST") return ok(await store.addAttachment(id, payload), 201);
+      if (method === "GET") {
+        if (isAgent(actor2)) return ok(assertRead(store, actors, actor2, id).attachments);
+        return ok(store.getTaskDetail(id).attachments);
+      }
+      if (method === "POST") {
+        if (isAgent(actor2)) return fail(403, "FORBIDDEN", "Agents cannot add attachments");
+        return ok(await store.addAttachment(id, payload), 201);
+      }
     }
     const attachmentDelete = /^\/kanban-api\/tasks\/([^/]+)\/attachments\/([^/]+)$/.exec(pathname);
     if (attachmentDelete && method === "DELETE") {
+      if (isAgent(actor2)) return fail(403, "FORBIDDEN", "Agents cannot delete attachments");
       await store.deleteAttachment(decodePathSegment(attachmentDelete[1]), decodePathSegment(attachmentDelete[2]));
       return noContent();
     }
@@ -20713,7 +20876,7 @@ function contentDisposition(filename) {
   const fallback = filename.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
   return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeRfc5987(filename)}`;
 }
-async function streamDownload(store, response, attachmentId) {
+async function streamDownload(store, response, attachmentId, actor2, actors) {
   let id;
   try {
     id = decodePathSegment(attachmentId);
@@ -20726,6 +20889,10 @@ async function streamDownload(store, response, attachmentId) {
   try {
     const result = store.readAttachment(id);
     const attachment = result.attachment;
+    if (actor2?.type === "agent") {
+      const detail = store.getTaskDetail(attachment.taskId);
+      actors.assertCan(actor2, "board:read", detail.task);
+    }
     response.writeHead(200, {
       "content-type": attachment.contentType,
       "content-disposition": contentDisposition(attachment.filename),
@@ -20766,13 +20933,18 @@ async function readJsonBody(request, response) {
     return { done: true };
   }
 }
-function createHttpHandler(store) {
+function createHttpHandler(store, { actors = createActorRegistry() } = {}) {
   return async (request, response) => {
     try {
+      const actor2 = actors.resolve(request.headers ?? {});
+      if (!actor2) {
+        sendJson(response, 401, { error: { code: "UNAUTHORIZED", message: "Invalid agent token", details: {} } });
+        return;
+      }
       const url2 = new URL(request.url, "http://localhost");
       const download = DOWNLOAD_PATH.exec(url2.pathname);
       if (download && request.method === "GET") {
-        await streamDownload(store, response, download[1]);
+        await streamDownload(store, response, download[1], actor2, actors);
         return;
       }
       let body = null;
@@ -20785,8 +20957,9 @@ function createHttpHandler(store) {
         method: request.method,
         pathname: url2.pathname,
         searchParams: url2.searchParams,
-        body
-      });
+        body,
+        actor: actor2
+      }, actors);
       response.writeHead(result.status, result.headers);
       response.end(result.body === null ? void 0 : JSON.stringify(result.body));
     } catch (error62) {
@@ -20804,7 +20977,9 @@ var inject = ["webServer", "storageDomain", "attachments"];
 async function apply(ctx) {
   const domain2 = await ctx.storageDomain.open(kanbanDomainSpec);
   ctx.effect(() => () => domain2.close(), "dsh-kanban: close domain");
+  const actors = createActorRegistry();
   const store = new KanbanStore({
+    actors,
     tables: {
       projects: domain2.table("projects"),
       tasks: domain2.table("tasks"),
@@ -20818,7 +20993,7 @@ async function apply(ctx) {
   ctx.effect(() => ctx.webServer.register({
     kind: "prefix",
     path: "/kanban-api",
-    handler: createHttpHandler(store)
+    handler: createHttpHandler(store, { actors })
   }), "dsh-kanban: HTTP route");
 }
 export {

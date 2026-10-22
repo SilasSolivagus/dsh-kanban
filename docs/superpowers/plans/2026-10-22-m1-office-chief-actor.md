@@ -1,4 +1,8 @@
-# M1：掌柜接意图 + 扳子上板 — Implementation Plan
+# M1：Office agent 接意图 + Builder 上板 — Implementation Plan
+
+> 命名说明：`掌柜`、`扳子`、`眼镜` 是 Silas 这个实例的 bot 名字，不是产品默认值。
+> 实现必须从 `~/.dsh/kanban-agents.json` 加载 actor，不得在代码里硬编码这些名字。
+> 本文测试/示例里的通用 id 是 `office` / `builder`。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
