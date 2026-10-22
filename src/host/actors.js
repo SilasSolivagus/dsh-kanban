@@ -23,9 +23,7 @@ function digest(value) {
 }
 
 function forbidden() {
-  // Keep FORBIDDEN in the error's string form as well as its `code`, so both
-  // `assert.throws(..., /FORBIDDEN/)` and HTTP error mapping can use it.
-  return Object.assign(new Error('Forbidden'), { code: 'FORBIDDEN', name: 'FORBIDDEN' })
+  return Object.assign(new Error('Forbidden'), { code: 'FORBIDDEN' })
 }
 
 export function createActorRegistry({ tokens, tokenFile } = {}) {

@@ -58,7 +58,7 @@ test('banzi can update own card only', () => {
   assert.throws(() => registry.assertCan(banzi, 'board:update', {
     projectId: 'dsh-kanban',
     assignee: { id: 'dsh.shopkeeper' },
-  }), /FORBIDDEN/)
+  }), (error) => error.code === 'FORBIDDEN')
 })
 
 test('banzi cannot update a card in another project', () => {
@@ -67,7 +67,7 @@ test('banzi cannot update a card in another project', () => {
   assert.throws(() => registry.assertCan(banzi, 'board:update', {
     projectId: 'other-project',
     assignee: { id: 'gb.banzi' },
-  }), /FORBIDDEN/)
+  }), (error) => error.code === 'FORBIDDEN')
 })
 
 test('shopkeeper can update any card in any project', () => {
@@ -85,6 +85,33 @@ test('local user is never restricted', () => {
     projectId: 'other-project',
     assignee: { id: 'gb.banzi' },
   }))
+})
+
+test('shopkeeper can create a card in any project', () => {
+  const registry = createActorRegistry({ tokens })
+  const shopkeeper = registry.get('dsh.shopkeeper')
+  assert.doesNotThrow(() => registry.assertCan(shopkeeper, 'board:create', {
+    projectId: 'dsh-kanban',
+  }))
+  assert.doesNotThrow(() => registry.assertCan(shopkeeper, 'board:create', {
+    projectId: 'other-project',
+  }))
+})
+
+test('banzi cannot create a card and can comment only inside dsh-kanban', () => {
+  const registry = createActorRegistry({ tokens })
+  const banzi = registry.get('gb.banzi')
+  assert.throws(() => registry.assertCan(banzi, 'board:create', {
+    projectId: 'dsh-kanban',
+  }), (error) => error.code === 'FORBIDDEN')
+  assert.doesNotThrow(() => registry.assertCan(banzi, 'board:comment', {
+    projectId: 'dsh-kanban',
+    assignee: { id: 'dsh.shopkeeper' },
+  }))
+  assert.throws(() => registry.assertCan(banzi, 'board:comment', {
+    projectId: 'other-project',
+    assignee: { id: 'dsh.shopkeeper' },
+  }), (error) => error.code === 'FORBIDDEN')
 })
 
 test('tokenFile supplies tokens when tokens are not passed', () => {
