@@ -41,13 +41,14 @@ Done
 - 大任务必须：评估 → 方案 → 掌柜/Silas 确认 → Running
 - A2A 没有 `planning` 标准状态：用卡上的 `planning` 扩展字段；需要人确认方案时，A2A 用 `input-required`
 
-**M1 不做 Planning；M2 才做。**
+**M1 不做 Planning；M1.5 接真实 Grok；M2 才做 Planning。**
 
 ## 阶段总览
 
 | 阶段 | 可用产物 | 入口 | Planning | 可停下来的价值 |
 | --- | --- | --- | --- | --- |
 | **M1** | 掌柜 + 扳子 | Silas → 掌柜 | 无 | 老板说一句，掌柜建卡，扳子能更新 |
+| **M1.5** | 真实 Grok Bot 接入 | Silas → 掌柜 | 无 | 一张卡被真 Grok 接走并回写 |
 | **M2** | 扳子先提方案再干 | Silas → 掌柜 | 有，子状态 | 大任务不再闷头开干 |
 | **M3** | 门神验收 | Silas → 掌柜 | 有 | 一张卡两段式交付 |
 | **M4** | 外部 A2A agent | Silas → 掌柜 | 有 | 不只 Grok Bot 能接 |
@@ -106,6 +107,16 @@ Silas 对掌柜说：“给看板加方案确认，找扳子”
 
 **可用产物：** 一个“掌柜 + 一个 bot”的最小工作台。  
 没有 Planning、没有 A2A、没有门神，但已经能真实派活。
+
+---
+
+## M1.5：真实 Grok Bot 接入（v0.1.5）
+
+**一句话：** 一个真实 Grok Bot 通过 GitHub issue bus 接收 DSH 卡并回写。
+
+- 详见：`docs/superpowers/plans/2026-10-22-m1.5-grokbot-bridge.md`
+- 不是 A2A；只是最小私有桥。
+- 退出标准：停掉 Grok，卡不动。
 
 ---
 
@@ -390,7 +401,7 @@ Silas：“这周把 DSH 看板方案确认做完”
 2. **每个阶段都能停。**
 3. **M1 的入口就是掌柜，不是 Silas 建卡。**
 4. **Planning 是 Backlog 子状态，不是第五列。**
-5. **M1 不做 Planning；M2 才做。**
+5. **M1 不做 Planning；M1.5 接真实 Grok；M2 才做 Planning。**
 6. **A2A 在 M4，不在 M1。**
 7. **M6 的掌柜是升级版，不是第一次出现。**
 
