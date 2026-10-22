@@ -1,7 +1,6 @@
 import { attentionReason, columnForTask, nextIdentifier } from '../shared/rules.js'
 import { PRIORITIES, STATUSES } from '../shared/statuses.js'
-
-const LOCAL_USER = { type: 'user', id: 'local-user', name: '本地用户', avatarUrl: null }
+import { LOCAL_USER } from './actors.js'
 const CURRENT_USER_TARGET = 'current-user'
 const TASK_TITLE_MAX = 240
 const TASK_DESCRIPTION_MAX = 100000
@@ -32,6 +31,7 @@ const TASK_PATCH_FIELDS = new Set([
   'priority',
   'labels',
   'assigneeTarget',
+  'assigneeId',
   'sortOrder',
   'blockedReason',
   'links',
@@ -257,13 +257,22 @@ export class KanbanStore {
   #attachments
   #now
   #newId
+  #actors
   #tail = Promise.resolve()
 
-  constructor({ tables, attachments, now = () => new Date().toISOString(), newId = () => crypto.randomUUID() }) {
+  constructor({ tables, attachments, actors = null, now = () => new Date().toISOString(), newId = () => crypto.randomUUID() }) {
     this.#tables = tables
     this.#attachments = attachments
+    this.#actors = actors
     this.#now = now
     this.#newId = newId
+  }
+
+  #resolveAssignee(assigneeId) {
+    if (assigneeId === undefined || assigneeId === null) return LOCAL_USER
+    const actor = this.#actors?.get(assigneeId)
+    if (!actor) throw Object.assign(new Error('Unknown assignee'), { code: 'INVALID_ASSIGNEE' })
+    return actor
   }
 
   #run(operation) {
@@ -292,11 +301,11 @@ export class KanbanStore {
     return task
   }
 
-  async #activity(taskId, changes) {
+  async #activity(taskId, changes, actor = LOCAL_USER) {
     const event = {
       id: this.#newId(),
       taskId,
-      actor: LOCAL_USER,
+      actor,
       changes: structuredClone(changes),
       createdAt: this.#now(),
     }
@@ -391,7 +400,7 @@ export class KanbanStore {
     })
   }
 
-  createTask(input = {}) {
+  createTask(input = {}, actor = LOCAL_USER) {
     return this.#run(async () => {
       if (!input || typeof input !== 'object' || Array.isArray(input)) {
         throw invalidField('input', 'must be an object')
@@ -404,6 +413,7 @@ export class KanbanStore {
         priority = 'none',
         labels = [],
         assigneeTarget = CURRENT_USER_TARGET,
+        assigneeId,
         sortOrder,
         links = [],
       } = input
@@ -416,6 +426,7 @@ export class KanbanStore {
       const cleanLabels = validateLabels(labels)
       const cleanLinks = validateLinks(links)
       validateAssigneeTarget(assigneeTarget)
+      const assignee = this.#resolveAssignee(assigneeId)
       const cleanSortOrder = sortOrder === undefined ? undefined : validateSortOrder(sortOrder)
       const tasks = [...this.#tables.tasks.entries()].map(([, task]) => task)
       const identifier = nextIdentifier(project, tasks)
@@ -431,7 +442,7 @@ export class KanbanStore {
         status: cleanStatus,
         priority: cleanPriority,
         labels: cleanLabels,
-        assignee: LOCAL_USER,
+        assignee,
         sortOrder: order,
         statusSince: timestamp,
         blockedReason: null,
@@ -450,12 +461,12 @@ export class KanbanStore {
         nextTaskNumber: Number(identifier.split('-').at(-1)) + 1,
         updatedAt: timestamp,
       })
-      await this.#activity(task.id, [{ field: 'status', before: null, after: task.status }])
+      await this.#activity(task.id, [{ field: 'status', before: null, after: task.status }], actor)
       return task
     })
   }
 
-  updateTask(id, patch) {
+  updateTask(id, patch, actor = LOCAL_USER) {
     return this.#run(async () => {
       const task = this.#task(id)
       const project = this.#project(task.projectId)
@@ -476,6 +487,7 @@ export class KanbanStore {
       if (Object.hasOwn(patch, 'sortOrder')) next.sortOrder = validateSortOrder(patch.sortOrder)
       if (Object.hasOwn(patch, 'blockedReason')) next.blockedReason = validateBlockedReason(patch.blockedReason)
       if (Object.hasOwn(patch, 'assigneeTarget')) validateAssigneeTarget(patch.assigneeTarget)
+      if (Object.hasOwn(patch, 'assigneeId')) next.assignee = this.#resolveAssignee(patch.assigneeId)
       next.version = task.version + 1
       next.updatedAt = now
       if (Object.hasOwn(patch, 'status') && next.status !== task.status) next.statusSince = now
@@ -499,8 +511,9 @@ export class KanbanStore {
       record('labels', task.labels, next.labels)
       record('links', task.links, next.links)
       record('blockedReason', task.blockedReason, next.blockedReason)
+      record('assignee', task.assignee, next.assignee)
       await this.#tables.tasks.put(id, next)
-      if (changes.length) await this.#activity(id, changes)
+      if (changes.length) await this.#activity(id, changes, actor)
       return next
     })
   }
@@ -595,7 +608,7 @@ export class KanbanStore {
     })
   }
 
-  addComment(taskId, body) {
+  addComment(taskId, body, actor = LOCAL_USER) {
     return this.#run(async () => {
       const task = this.#mutableTask(taskId)
       const cleanBody = validateCommentBody(body)
@@ -604,7 +617,7 @@ export class KanbanStore {
         id: this.#newId(),
         taskId: task.id,
         body: cleanBody,
-        author: LOCAL_USER,
+        author: actor,
         createdAt: timestamp,
         updatedAt: timestamp,
       }
