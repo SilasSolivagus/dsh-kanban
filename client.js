@@ -4482,11 +4482,25 @@ html[data-fullscreen] .dkb-drag-strip {
   height: 0;
 }
 
-.dkb-header {
+/*
+ * The titlebar strip above the header already clears the traffic lights and
+ * the collapsed sidebar controls in a windowed desktop. Content below that
+ * strip can align to the normal left gutter. Fullscreen has no strip, so it
+ * keeps DSH's leading clearance / measured rail fallback.
+ */
+html:not([data-fullscreen]) .dkb-header {
+  padding-left: 18px;
+}
+
+html:not([data-fullscreen]) .dkb-main {
+  padding-left: 20px;
+}
+
+html[data-fullscreen] .dkb-header {
   padding-left: max(18px, var(--dsh-frame-leading-clearance, 0px), var(--dkb-rail-safe, 0px));
 }
 
-.dkb-main {
+html[data-fullscreen] .dkb-main {
   padding-left: max(20px, var(--dsh-frame-leading-clearance, 0px), var(--dkb-rail-safe, 0px));
 }
 `;
