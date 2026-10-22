@@ -1,281 +1,364 @@
-# A2A Iteration Milestones
+# DSH Kanban → A2A：可用阶段里程碑
 
-> **For agentic workers:** This is a milestone roadmap, not a task-level implementation plan. Before executing any milestone, write a separate task-level plan with TDD steps and exact files. Use `superpowers:subagent-driven-development` or `superpowers:executing-plans`.
+> 每个里程碑都必须是一个**可以用的东西**，不是内部层完成度。  
+> 任何阶段都可以停下来，仍然有价值。
 
-**Goal:** Evolve DSH Kanban from a single-user decision board into an A2A-compatible shared task board where scoped human and agent actors work around cards.
+**最终目标：** Kanban 成为 A2A 兼容的共享任务工作台；人和 agent 围绕卡工作。
 
-**Architecture:** Kanban is the A2A Task store. Agents are A2A clients. Grok Bot is the first adapter, not the protocol. A2A handles discovery, task lifecycle, messages and artifacts; MCP remains the tool interface. Local DSH stays the source of truth until a reachable A2A endpoint is proven.
+**架构：** Kanban = A2A Task store；agent = 有身份的 actor；A2A = 任务协议；MCP = 工具接口；Grok Bot = 第一个 adapter，不是协议本身。
 
-**Tech Stack:** Node 22, Cordis, zod, DSH `storageDomain`, A2A v1.0, `@a2a-js/sdk` 1.3.0, existing HTTP API and React client.
+**技术：** Node 22、Cordis、zod、DSH `storageDomain`、A2A v1.0、`@a2a-js/sdk@1.3.0`。
 
-**Spec:** [A2A v1.0](https://a2a-protocol.org/latest/specification/), [A2A and MCP](https://a2a-protocol.org/latest/topics/a2a-and-mcp/), [Life of a task](https://a2a-protocol.org/latest/topics/life-of-a-task/), current bridge experiments TEST-001..003.
+## 总览
 
-## Global Constraints
+| 阶段 | 可用产物 | 用户能做什么 |
+| --- | --- | --- |
+| **M1** | Bot 能上板 | 把一张卡分给扳子，扳子能更新、评论，活动记录是扳子 |
+| **M2** | Bot 能接活 | 老板往 Inbox 放事，扳子认领、提方案、等确认、交付 |
+| **M3** | 两个 Bot 能交接 | 扳子做完交给门神验收，一张卡两个 actor |
+| **M4** | 外部 Agent 能接入 | 任意 A2A client 能创建/认领/完成卡，不只 Grok Bot |
+| **M5** | 手机能批 | Needs you 到手机，老板批完，bot 继续 |
+| **M6** | 掌柜能代管 | 老板只放意图，掌柜建卡、分派、汇总、兜底 |
+| **M7** | 生产可用 | 安全、备份、限流、文档、回滚 |
 
-- A2A protocol version: `1.0`.
-- SDK: `@a2a-js/sdk@1.3.0` (server and client).
-- No new UI framework; use the existing Cordis plugin and React client.
-- Kanban remains the source of truth for task state; agent memory is a cache.
-- One card = one A2A Task; comments = A2A Messages; links/attachments = A2A Artifacts.
-- No public board exposure without scoped auth and project ACL.
-- One pilot project and at most four active agents before M4.
-- No secrets, PRD content, health data, or customer data in A2A messages or the bridge repo.
-- Every write is versioned and idempotent; duplicate delivery must not duplicate work.
-- MCP is not the A2A transport; it remains a tool interface.
-- Each milestone ends with a demo, tests, and a written exit review.
+## 阶段前：A2A 决策（不是里程碑）
 
-## Milestone M0 — Baseline and A2A decision
+**1–2 天，不写产品代码。**
 
-**Duration:** 1–2 days. **No behavior change.**
+- 写 `docs/adr/0001-a2a-and-kanban.md`
+- 写 `docs/a2a-mapping.md`
+- 审计当前 `actor`、`assignee`、`activity`、`version`、`/kanban-api`
+- 定 A2A 宿主方向（本地网关 / 云端服务）
 
-**Deliverables:**
+**产出物：** 决策记录 + 映射表。  
+**不阻塞 M1：** M1 不依赖 A2A server。
 
-- `docs/adr/0001-a2a-and-kanban.md`: why A2A, what it owns, what MCP owns, what Kanban owns.
-- `docs/a2a-mapping.md`: A2A objects, task states, and board fields.
-- Baseline audit of `actor`, `assignee`, `activity`, `version`, `/kanban-api`, and local auth.
-- Decision on A2A server hosting: local gateway vs cloud service (can remain open until M3, but must be named).
+---
 
-**Files:**
+## M1：Bot 能上板（v0.1）
 
-- Create: `docs/adr/0001-a2a-and-kanban.md`
-- Create: `docs/a2a-mapping.md`
-- Read: `src/host/schema.js`, `src/host/store.js`, `src/host/http.js`
+**一句话：** 看板不再是单人板。扳子有自己的身份，能更新自己负责的卡。
 
-**Exit criteria:**
+**用户能做什么：**
 
-- [ ] A2A mapping covers `Agent Card`, `Task`, `Message`, `Part`, `Artifact`.
-- [ ] Task state table is explicit: `submitted`, `working`, `input-required`, `completed`, `failed`, `canceled`, `auth-required`.
-- [ ] ADR states that Kanban, not agent memory, is authoritative.
-- [ ] Hosting decision is recorded as either chosen or explicitly deferred to M3.
-- [ ] `pnpm check` still passes 121 tests; no source files changed.
+1. 建一张卡，assignee 选“扳子”
+2. 扳子用 scoped token 更新状态 / 评论
+3. 卡片活动显示“扳子”，不是“本地用户”
+4. 扳子看不到别的项目，也不能批准红色发布
 
-## Milestone M1 — Actor and access foundation
+**必须实现：**
 
-**Duration:** 3–5 days. **The first code milestone.**
+- Actor registry：human / agent
+- Scoped token：项目读、自己的卡写、评论
+- `assignee` 支持 actor，不再只允许 `current-user`
+- `activity` / comment 记录真实 actor
+- 项目 ACL
+- 一个最小 bot API：`update card` / `comment`
 
-**Deliverables:**
+**Demo：**
 
-- Actor registry: human and agent actors, roles, scopes.
-- Scoped agent tokens: project read, own-card write, comment; no red approval, no delete, no archive.
-- Real `assignee` selection by actor, not `current-user`.
-- Activity and comments record the real actor.
-- Project ACL: an agent sees only its projects.
+```text
+Silas 建卡 "TEST-001"
+→ 分配给扳子
+→ 扳子 PATCH 状态 + 评论
+→ 看板显示：扳子 / 已更新
+```
 
-**Files:**
+**退出条件：**
 
-- Create: `src/host/actors.js`
-- Modify: `src/host/schema.js`, `src/host/store.js`, `src/host/http.js`, `src/host/entry.js`
-- Modify: `src/client/components/TaskDrawer.js`, `src/client/components/App.js`
-- Test: `src/host/__tests__/actors.test.js`, `src/host/__tests__/access.test.js`
+- [ ] Bot A 能更新自己的卡
+- [ ] Bot B 不能更新 A 的卡（403）
+- [ ] Bot 不能跨项目读
+- [ ] Bot 不能批准红色发布 / 删除 / 归档
+- [ ] 活动记录 actor 正确
+- [ ] 现有 121 测试仍通过
 
-**Interfaces:**
+**这是第一个能用的阶段。**  
+哪怕没有 A2A、没有 Planning、没有 handoff，这张板已经能“把活派给 bot”。
 
-- Produces: `actors.list()`, `actors.resolve(token)`, `actors.assertCan(actor, action, card)`
-- Produces: token scopes `board:read:<project>`, `board:write:own`, `board:comment`, `board:claim`
-- Consumes: existing `task.version` conflict semantics.
+---
 
-**Exit criteria:**
+## M2：Bot 能接活（v0.2）
 
-- [ ] Bot A can update a card assigned to A.
-- [ ] Bot B cannot update A's card; API returns `403`.
-- [ ] Bot A cannot read a project outside its scope.
-- [ ] Bot cannot approve a red decision or delete/archive a card.
-- [ ] Activity and comment `actor` show the bot, not `LOCAL_USER`.
-- [ ] Tests cover positive and negative access paths.
+**一句话：** 老板只往 Inbox 放事；扳子自己评估、提方案、认领、交付。
 
-## Milestone M2 — Shared workspace semantics
+**用户能做什么：**
 
-**Duration:** 5–7 days.
+1. 往 Inbox 放一条意图
+2. 扳子在 Planning 提评估和方案
+3. 老板确认方案
+4. 扳子认领、进 Running、报进展、交证据
+5. 门神/老板验收后 Done
 
-**Deliverables:**
+**必须实现：**
 
-- `Planning` as a Backlog sub-state: bot assessment, proposed plan, owner, estimate, risk.
-- Claim with lease and heartbeat; double claim returns `409`.
-- Explicit handoff; ownership does not change silently.
-- Card fields: `intent`, `acceptance`, `assessment`, `plan`, `progress`, `evidence`, `cost`, `runId`.
-- Event stream for card changes; no full-board polling.
-- `Needs you` only for human gates: decision, blocker, review, auth.
+- `Planning` 子状态（不要先加第五列）
+- `claim` + lease + heartbeat
+- `plan` / `assessment` / `evidence` / `cost` 字段
+- 方案确认（老板或 owner）
+- 事件流：卡变更通知，不用全板轮询
+- `Needs you` 只收人的 gate
 
-**Files:**
+**Demo：**
 
-- Modify: `src/host/schema.js`, `src/host/store.js`, `src/host/http.js`
-- Modify: `src/client/components/App.js`, `TaskCard.js`, `TaskDrawer.js`
-- Test: `src/host/__tests__/claim.test.js`, `src/host/__tests__/handoff.test.js`, `src/host/__tests__/planning.test.js`
+```text
+Inbox: "给看板加方案确认"
+→ 扳子评估：2 天，风险中
+→ 扳子提方案
+→ Silas 确认
+→ 扳子 Running → 交 PR / 证据
+→ 门神通过 → Done
+```
 
-**Exit criteria:**
+**退出条件：**
 
-- [ ] Two actors cannot hold the same lease.
-- [ ] Expired lease can be reclaimed; activity records both.
-- [ ] Handoff requires acceptance.
-- [ ] Plan approval is recorded; unapproved large work cannot enter Running.
-- [ ] A card change emits one event consumed by a test client.
-- [ ] `Needs you` precedence remains question > blocker > review.
+- [ ] 两个 actor 不能同时持有同一张卡
+- [ ] lease 过期可回收
+- [ ] handoff 必须显式接受
+- [ ] 未确认方案不能进 Running
+- [ ] 一次卡变更只发一个事件
 
-## Milestone M3 — A2A-lite server
+**可用产物：** 一个 bot 可以从 Inbox 干到 Done，老板只在方案和验收出现。
 
-**Duration:** 5–7 days.
+---
 
-**Deliverables:**
+## M3：两个 Bot 能交接（v0.3）
 
-- Agent Card at `/.well-known/agent-card.json` for the Kanban board.
-- A2A methods: `SendMessage`, `GetTask`, `ListTasks`.
-- Task state mapping to board columns.
-- Message → comment; Artifact → link/attachment.
-- Bearer auth and project scopes.
-- No streaming, push, or cancellation yet.
+**一句话：** 一张卡可以从扳子交给门神，所有权和验收可见。
 
-**Files:**
+**用户能做什么：**
 
-- Create: `src/host/a2a/agent-card.js`, `src/host/a2a/server.js`, `src/host/a2a/tasks.js`, `src/host/a2a/auth.js`
-- Modify: `src/host/entry.js`, `src/host/http.js`
-- Test: `src/host/__tests__/a2a-server.test.js`, `src/host/__tests__/a2a-conformance.test.js`
+1. 扳子完成实现，handoff 给门神
+2. 门神接受，做验收
+3. 门神放行或退回，卡上留痕
+4. 老板只看到一张卡的状态，不需要在群里追
 
-**Interfaces:**
+**必须实现：**
 
-- Produces: A2A task IDs mapped to card IDs; `contextId` stored on card.
-- Produces: `a2a.sendMessage`, `a2a.getTask`, `a2a.listTasks`.
-- Consumes: M1 actor/token model; M2 claim/plan fields.
+- 第二个 bot actor + 独立 token
+- `handoff`：提议 → 接受 / 拒绝
+- 验收状态：`in_review` / `blocked`
+- 活动记录 owner 变化
+- 防止双写 / 重复验收
 
-**Exit criteria:**
+**Demo：**
 
-- [ ] Agent Card validates against A2A v1.0.
-- [ ] An A2A client creates a task that appears in Inbox.
-- [ ] `GetTask` returns the correct board state.
-- [ ] `ListTasks` filters by project and state.
-- [ ] Unauthorized project access returns 403.
-- [ ] A2A integration tests pass; no regression in 121 existing tests.
+```text
+扳子：实现完成，handoff 门神
+门神：接受 → 验收 → 放行 / 退回
+卡：owner、状态、证据、activity 完整
+```
 
-## Milestone M4 — Two independent adapters
+**退出条件：**
 
-**Duration:** 5–7 days.
+- [ ] handoff 接受前 owner 不变
+- [ ] 两个 bot 不能同时验收同一张卡
+- [ ] 退回后回到 Running，不是 Done
+- [ ] 活动可追溯
 
-**Deliverables:**
+**可用产物：** 一条真实的两段式交付链，已经比“42 个 bot 群聊”清楚。
 
-- Grok Bot adapter: webhook wake + GitHub issue comment translation to A2A.
-- Second adapter: local A2A client/script, not Grok Bot.
-- Conformance tests proving both clients use the same task semantics.
-- No duplicate card/run on retries.
+---
 
-**Files:**
+## M4：外部 Agent 能接入（A2A-lite v0.1）
 
-- Create: `src/host/a2a/adapters/grokbot.js`, `src/host/a2a/adapters/local-client.js`
-- Create: `scripts/a2a-smoke-client.mjs`
-- Modify: `src/host/a2a/server.js`, `src/host/http.js`
-- Test: `src/host/__tests__/a2a-adapters.test.js`
+**一句话：** 不只 Grok Bot。任何 A2A client 都能创建、认领、更新、完成一张卡。
 
-**Exit criteria:**
+**用户能做什么：**
 
-- [ ] Both adapters create, claim, update, and complete the same card type.
-- [ ] Retrying the same message does not duplicate a task or artifact.
-- [ ] Grok Bot can still use the existing webhook/issue path.
-- [ ] The second adapter does not depend on Grok Bot code.
-- [ ] If only Grok Bot can pass, M4 is not complete.
+1. 一个非 Grok Bot 的 A2A client 创建任务
+2. 看板显示成一张卡
+3. client 查询状态、认领、更新
+4. Grok Bot adapter 仍然可用
+5. 两个 client 操作同一种卡，语义一致
 
-## Milestone M5 — Async, push, and security
+**必须实现：**
 
-**Duration:** 5–7 days.
+- `/.well-known/agent-card.json`
+- `SendMessage`
+- `GetTask`
+- `ListTasks`
+- A2A Task 状态映射
+- Message → comment；Artifact → link/attachment
+- Bearer auth + project scope
+- 先不做 streaming / push
 
-**Deliverables:**
+**Task 状态映射：**
 
-- `SendStreamingMessage`, `SubscribeToTask`, `CancelTask`.
-- A2A push notification configuration; Herald/mobile relay.
-- Signed requests or verified agent identity; rate limits.
-- Cost and artifact metadata in task updates.
+```text
+submitted → Inbox
+working → Running
+input-required → Needs you
+completed → Done
+failed → Blocked
+canceled → Canceled
+auth-required → Needs you / 权限阻塞
+```
 
-**Files:**
+**Demo：**
 
-- Create: `src/host/a2a/push.js`, `src/host/a2a/signatures.js`
-- Modify: `src/host/a2a/server.js`, `src/host/a2a/auth.js`
-- Test: `src/host/__tests__/a2a-push.test.js`, `src/host/__tests__/a2a-auth.test.js`
+```text
+本地 A2A client 创建 TASK-004
+→ 看板 Inbox 出现卡
+→ client GetTask 查状态
+→ client 认领 → Running
+→ comment/artifact 写回
+→ complete → Done
+```
 
-**Exit criteria:**
+**退出条件：**
 
-- [ ] A subscribed client receives a state update.
-- [ ] A push notification reaches the configured endpoint.
-- [ ] Canceled task stops work and records the actor.
-- [ ] Invalid signature/token returns 401/403.
-- [ ] Rate limit prevents a runaway agent.
+- [ ] Agent Card 通过 A2A v1.0 校验
+- [ ] 非 Grok Bot client 能完成全链路
+- [ ] Grok Bot adapter 仍然通过
+- [ ] 重复消息不重复建卡
+- [ ] 未授权项目 403
 
-## Milestone M6 — One entry and Office Chief
+**这是 A2A 的关键里程碑。**  
+如果只有 Grok Bot 能接，M4 不算完成。
 
-**Duration:** 5–7 days.
+---
 
-**Deliverables:**
+## M5：手机能批（Mobile v0.1）
 
-- 掌柜 agent: curates cards, prepares decision briefs, routes work, maintains board hygiene.
-- Human view: intent → plan → progress → evidence → decision; agent topology hidden.
-- Mobile `Needs you` approval path through Herald.
-- Cost/attention summary for the chairman.
+**一句话：** Needs you 到手机，老板批完，bot 继续。
 
-**Files:**
+**用户能做什么：**
 
-- Create: `src/host/office/curator.js`, `src/host/office/brief.js`
-- Modify: `src/client/components/App.js`, `TaskDrawer.js`, `src/client/styles.css`
-- Test: `src/host/__tests__/curator.test.js`, `src/client/__tests__/office.test.js`
+1. 卡进入 Needs you
+2. 手机收到一条摘要（≤120 字）
+3. 老板批准 / 退回 / 延后
+4. bot 收到决定，继续或停止
+5. 桌面看板同步更新
 
-**Exit criteria:**
+**必须实现：**
 
-- [ ] Silas can drop a card and see a plan without managing bot roles.
-- [ ] 掌柜 can create, route, and summarize cards but cannot approve red decisions.
-- [ ] Board shows owner, plan, progress, evidence, decision; not agent chatter.
-- [ ] Mobile can approve/reject/defer one `Needs you` card.
+- A2A push / subscribe
+- 传令兵 / Herald
+- 短选项 + 详情链接
+- 决定写回 + 幂等
+- 超时提醒一次
+- 红色发布必须桌面二次确认
 
-## Milestone M7 — Hardening and launch
+**Demo：**
 
-**Duration:** 3–5 days.
+```text
+门神：PR 已过 QA，等放行
+→ 手机："TASK-004 发布放行？"
+→ 老板点批准
+→ 门神继续 / 卡进 Done
+```
 
-**Deliverables:**
+**退出条件：**
 
-- Security review, token rotation, audit log, backup/restore.
-- Migration notes for existing cards and `LOCAL_USER`.
-- Documentation: A2A setup, adapters, scopes, failure modes.
-- Performance check with 100 cards and 5 agents.
-- Rollback plan to the pre-A2A board.
+- [ ] 手机能收到一条真实 Needs you
+- [ ] 批准/退回/延后都写回卡
+- [ ] 重复点击不重复执行
+- [ ] 红事不能只在手机一键完成
 
-**Exit criteria:**
+**可用产物：** 老板第一次可以离开桌面，仍然让公司继续跑。
 
-- [ ] No public endpoint without auth.
-- [ ] Backup/restore verified on a real board.
-- [ ] A2A docs and adapter docs complete.
-- [ ] `pnpm check` passes; manual smoke test passes.
-- [ ] Rollback tested.
+---
 
-## Task state mapping
+## M6：掌柜能代管（Office Chief v0.1）
 
-| A2A state | Kanban |
+**一句话：** 老板只放意图，掌柜建卡、分派、汇总、兜底。
+
+**用户能做什么：**
+
+1. 对掌柜说“给看板加方案确认”
+2. 掌柜建卡、补验收、分派给扳子
+3. 掌柜在卡上汇总进展、标阻塞、准备决策简报
+4. 老板只在 Needs you 出现
+5. bot 的组织结构默认隐藏
+
+**必须实现：**
+
+- 掌柜 agent（DSH 本地）
+- 建卡 / 分派 / 汇总 / 催办
+- 决策简报：选项、建议、证据、deadline
+- 成本 / 注意力摘要
+- 不替老板批红
+- 兜底模式：外部 bot 不可用时保关键路径
+
+**Demo：**
+
+```text
+Silas："给看板加方案确认"
+→ 掌柜建卡、写验收、分派扳子
+→ 扳子提方案
+→ 掌柜汇总给 Silas
+→ Silas 确认
+→ 扳子交付，门神验收
+```
+
+**退出条件：**
+
+- [ ] 老板不需要自己建卡
+- [ ] 掌柜不能自批红事
+- [ ] 老板能看到 plan / progress / evidence / decision
+- [ ] bot 组织不出现在主界面
+- [ ] 外部 bot 断供时，掌柜能保关键路径
+
+---
+
+## M7：生产可用（v1.0）
+
+**一句话：** 可以日常用，不怕丢数据、不怕乱权限、不怕回滚。
+
+**必须实现：**
+
+- 安全审查
+- token 轮换
+- 速率限制
+- 备份/恢复
+- 审计日志
+- 迁移 `LOCAL_USER`
+- 文档 / 故障模式 / 回滚
+- 100 卡 + 5 agent 性能测试
+
+**退出条件：**
+
+- [ ] 无未鉴权公网端点
+- [ ] 备份解压验证通过
+- [ ] 迁移和回滚演练通过
+- [ ] 文档完整
+- [ ] 现有测试 + 新测试全绿
+
+---
+
+## 阶段原则
+
+1. **每个阶段都有 demo。** 没有 demo 的里程碑不算。
+2. **每个阶段都能停。** 停下来仍然有用。
+3. **A2A 在 M4，不在 M1。** 先让 bot 上板，再谈协议。
+4. **Actor / Access 是 M1 的内部实现，不是独立阶段。**
+5. **M3 证明多 bot；M4 证明多协议。**
+6. **M5 证明移动；M6 证明一个入口。**
+7. **M7 才谈生产。**
+
+## 风险
+
+| 风险 | 处理 |
 | --- | --- |
-| `submitted` | Inbox / Backlog |
-| `working` | Running |
-| `input-required` | Needs you |
-| `completed` | Done |
-| `failed` | Blocked / failed |
-| `canceled` | Canceled / archived |
-| `auth-required` | Needs you / permission blocked |
+| 只有 Grok Bot 能接 | M4 必须有非 GB client |
+| 本地看板不可达 | M4 前定宿主方案 |
+| bot 记忆覆盖卡 | 卡是权威，记忆是缓存 |
+| 重复消息 | message_id + task_id 幂等 |
+| 权限泄漏 | scoped token + 项目 ACL + 负向测试 |
+| token 浪费 | 事件订阅，不轮询全板 |
 
-## Risks
+## 现在做什么
 
-| Risk | Mitigation |
-| --- | --- |
-| Grok Bot is not A2A-native | Keep the GB adapter; do not call it A2A |
-| Local board not reachable | Decide hosting at M3; gateway or cloud service |
-| Duplicate task stores | Kanban is authoritative; no agent-side task board |
-| Agent memory wins over board | Read card before start; card wins |
-| A2A spec drift | Pin v1.0 and SDK 1.3.0; conformance tests |
-| Token cost | Scope reads, events not polling, one card per task |
-| Permission bypass | Scoped tokens, negative tests, no red approval |
+**M1，不是 A2A server。**
 
-## Out of scope
+M1 的产物是：
 
-- Multi-tenant A2A discovery marketplace
-- Public internet exposure before M5
-- Custom columns and WIP limits
-- 42-bot onboarding
-- Replacing MCP
-- Full A2A streaming before M5
-- Agent self-approval
+> **一张板，扳子有自己的身份，能更新自己的卡。**
 
-## Start here
+这是第一个“可用的东西”。  
+A2A 是 M4 的事。
 
-**Do M0 only.** No source code, no A2A server, no dependency addition until the ADR and mapping are reviewed.
+---
 
-After M0, write a task-level TDD plan for M1 (actor and access) and execute it in an isolated worktree.
+**下一步：** 为 M1 写 task-level TDD 计划（actor registry、token、assignee、activity、ACL），在隔离 worktree 执行。
