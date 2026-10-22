@@ -15,6 +15,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml"><img src="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/version-2.0.0-2F6FB2?style=flat-square" alt="version 2.0.0" />
   <img src="https://img.shields.io/badge/DSH-0.2.1--rc.2-111827?style=flat-square" alt="DSH 0.2.1-rc.2" />
   <img src="https://img.shields.io/badge/tests-121%20passing-2EA043?style=flat-square" alt="121 tests passing" />
