@@ -1980,17 +1980,11 @@ button.dkb-chip-project:hover {
 
 /*
  * The DSH shell overlays a compact sidebar rail over the main column when the
- * sidebar is collapsed. Reserve its width so the project switcher and board
- * heading are never covered by the rail's toggle.
+ * sidebar is collapsed. App measures the live rail and writes --dkb-rail-safe
+ * on .dkb; this keeps the project switcher and board heading clear even when
+ * the desktop client uses a different rail width from the web build.
  */
-[data-sidebar-collapsed="true"] .dkb-header,
-[data-sidebar-collapsed="true"] .dkb-main {
-  padding-left: 54px;
-}
-
-@media (max-width: 720px) {
-  [data-sidebar-collapsed="true"] .dkb-header,
-  [data-sidebar-collapsed="true"] .dkb-main {
-    padding-left: 50px;
-  }
+.dkb[data-sidebar-collapsed="true"] .dkb-header,
+.dkb[data-sidebar-collapsed="true"] .dkb-main {
+  padding-left: var(--dkb-rail-safe, 54px);
 }

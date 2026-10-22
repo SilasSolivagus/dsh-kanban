@@ -4468,19 +4468,13 @@ button.dkb-chip-project:hover {
 
 /*
  * The DSH shell overlays a compact sidebar rail over the main column when the
- * sidebar is collapsed. Reserve its width so the project switcher and board
- * heading are never covered by the rail's toggle.
+ * sidebar is collapsed. App measures the live rail and writes --dkb-rail-safe
+ * on .dkb; this keeps the project switcher and board heading clear even when
+ * the desktop client uses a different rail width from the web build.
  */
-[data-sidebar-collapsed="true"] .dkb-header,
-[data-sidebar-collapsed="true"] .dkb-main {
-  padding-left: 54px;
-}
-
-@media (max-width: 720px) {
-  [data-sidebar-collapsed="true"] .dkb-header,
-  [data-sidebar-collapsed="true"] .dkb-main {
-    padding-left: 50px;
-  }
+.dkb[data-sidebar-collapsed="true"] .dkb-header,
+.dkb[data-sidebar-collapsed="true"] .dkb-main {
+  padding-left: var(--dkb-rail-safe, 54px);
 }
 `;
 
@@ -4527,6 +4521,7 @@ function App({ t }) {
   const dialogKey = (0, import_react10.useRef)(0);
   const toastKey = (0, import_react10.useRef)(0);
   const searchRef = (0, import_react10.useRef)(null);
+  const rootRef = (0, import_react10.useRef)(null);
   const showToast = (0, import_react10.useCallback)((message, tone = "error") => {
     toastKey.current += 1;
     setToast({ id: toastKey.current, message, tone });
@@ -4547,6 +4542,48 @@ function App({ t }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+  (0, import_react10.useEffect)(() => {
+    if (typeof window === "undefined") return void 0;
+    const root = rootRef.current;
+    if (!root) return void 0;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const rail = document.querySelector('[class*="_root"][class*="_collapsed"]');
+      const railRect = rail?.getBoundingClientRect();
+      if (!railRect || railRect.width <= 0) {
+        root.style.removeProperty("--dkb-rail-safe");
+        delete root.dataset.sidebarCollapsed;
+        return;
+      }
+      const rootRect = root.getBoundingClientRect();
+      const safe = Math.max(18, Math.ceil(railRect.right + 28 - rootRect.left));
+      root.style.setProperty("--dkb-rail-safe", `${safe}px`);
+      root.dataset.sidebarCollapsed = "true";
+    };
+    const schedule = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(measure);
+    };
+    measure();
+    const mutation = new MutationObserver(schedule);
+    mutation.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class", "data-sidebar-collapsed", "data-animating"],
+      subtree: true
+    });
+    const resize = typeof window.ResizeObserver === "function" ? new ResizeObserver(schedule) : null;
+    resize?.observe(document.body);
+    window.addEventListener("resize", schedule);
+    const timer = window.setInterval(schedule, 1e3);
+    return () => {
+      mutation.disconnect();
+      resize?.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.clearInterval(timer);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
   }, []);
   const load = (0, import_react10.useCallback)(async ({ silent = false, selectProjectId } = {}) => {
     if (silent) setRefreshing(true);
@@ -4887,7 +4924,7 @@ function App({ t }) {
     }
     return null;
   };
-  return /* @__PURE__ */ import_react10.default.createElement(import_react10.default.Fragment, null, /* @__PURE__ */ import_react10.default.createElement("style", null, styles_default), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb" }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dkb-header" }, /* @__PURE__ */ import_react10.default.createElement(
+  return /* @__PURE__ */ import_react10.default.createElement(import_react10.default.Fragment, null, /* @__PURE__ */ import_react10.default.createElement("style", null, styles_default), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb", ref: rootRef }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dkb-header" }, /* @__PURE__ */ import_react10.default.createElement(
     ProjectSwitcher,
     {
       projects: activeProjects,

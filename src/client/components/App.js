@@ -83,6 +83,7 @@ export function App({ t }) {
   const dialogKey = useRef(0)
   const toastKey = useRef(0)
   const searchRef = useRef(null)
+  const rootRef = useRef(null)
 
   const showToast = useCallback((message, tone = 'error') => {
     toastKey.current += 1
@@ -106,6 +107,49 @@ export function App({ t }) {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const root = rootRef.current
+    if (!root) return undefined
+    let frame = 0
+    const measure = () => {
+      frame = 0
+      const rail = document.querySelector('[class*="_root"][class*="_collapsed"]')
+      const railRect = rail?.getBoundingClientRect()
+      if (!railRect || railRect.width <= 0) {
+        root.style.removeProperty('--dkb-rail-safe')
+        delete root.dataset.sidebarCollapsed
+        return
+      }
+      const rootRect = root.getBoundingClientRect()
+      const safe = Math.max(18, Math.ceil(railRect.right + 28 - rootRect.left))
+      root.style.setProperty('--dkb-rail-safe', `${safe}px`)
+      root.dataset.sidebarCollapsed = 'true'
+    }
+    const schedule = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(measure)
+    }
+    measure()
+    const mutation = new MutationObserver(schedule)
+    mutation.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class', 'data-sidebar-collapsed', 'data-animating'],
+      subtree: true,
+    })
+    const resize = typeof window.ResizeObserver === 'function' ? new ResizeObserver(schedule) : null
+    resize?.observe(document.body)
+    window.addEventListener('resize', schedule)
+    const timer = window.setInterval(schedule, 1000)
+    return () => {
+      mutation.disconnect()
+      resize?.disconnect()
+      window.removeEventListener('resize', schedule)
+      window.clearInterval(timer)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
   }, [])
 
   const load = useCallback(async ({ silent = false, selectProjectId } = {}) => {
@@ -469,7 +513,7 @@ export function App({ t }) {
 
   return <>
     <style>{styles}</style>
-    <div className="dkb">
+    <div className="dkb" ref={rootRef}>
       <header className="dkb-header">
         <ProjectSwitcher
           projects={activeProjects}
