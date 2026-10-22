@@ -1,43 +1,66 @@
-# DSH 看板
+<p align="center">
+  <img src="icon.svg" width="76" alt="DSH Kanban icon" />
+</p>
 
-DeepSeek Harness 的原生任务看板插件。它不是 iframe，也不是独立网页，而是直接注册到 DSH 的 `main` 页面和侧边栏的原生 Cordis 插件。
+<h1 align="center">DSH Kanban</h1>
 
-- 四列看板：**Backlog / Running / Needs you / Done**
-- 项目、任务、审批、评论、附件、活动记录
-- 项目归档只读、任务归档恢复
-- Host 端持久化，刷新、重启后数据仍在
-- 中英文界面，跟随 DSH 主题
+<p align="center">
+  <strong>The native task board for DeepSeek Harness.</strong><br/>
+  Four columns. Durable persistence. No iframe.
+</p>
 
-当前版本：`2.0.0`  
-验证环境：DSH `0.2.1-rc.2`、Node `22`、pnpm `10`
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-![DSH 看板](docs/assets/kanban-board.png)
+<p align="center">
+  <a href="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml"><img src="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <img src="https://img.shields.io/badge/version-2.0.0-2F6FB2?style=flat-square" alt="version 2.0.0" />
+  <img src="https://img.shields.io/badge/DSH-0.2.1--rc.2-111827?style=flat-square" alt="DSH 0.2.1-rc.2" />
+  <img src="https://img.shields.io/badge/tests-121%20passing-2EA043?style=flat-square" alt="121 tests passing" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA043?style=flat-square" alt="MIT license" /></a>
+</p>
 
-> 真实运行截图（All projects 视图，示例数据）：四列看板、问题卡片、阻塞卡片和计时器。
+<p align="center">
+  <img src="docs/assets/kanban-board.png" alt="DSH Kanban four-column board" width="100%" />
+</p>
 
-## 功能
+<p align="center">
+  <sub>All projects view. Questions and blockers automatically collect in <b>Needs you</b>.</sub>
+</p>
 
-| 模块 | 能力 |
+## Your agent needs a queue. You need a board.
+
+DSH Kanban is a **native Cordis plugin** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It registers a real page in the `main` slot and a real entry in `sidebar.panellist` — not a web app inside an iframe.
+
+Projects, tasks, comments, attachments and activity live in the Host's `storageDomain`. The browser is never the source of truth.
+
+The board is built for the loop between a human and an agent:
+
+1. The agent creates work, records a blocker, or asks a question.
+2. The card moves to **Needs you** automatically.
+3. You answer in the card — approve, reject, unblock, comment.
+4. The task moves to **Done**, with the full activity trail.
+
+> One board. One data model. No second tab to keep in sync.
+
+## ✨ What you get
+
+| | |
 | --- | --- |
-| 项目 | 新建、重命名、归档、恢复；只有空项目可以永久删除 |
-| 任务 | 新建、编辑、拖拽换列/排序、归档、恢复、永久删除 |
-| 看板 | 四列分组、列折叠、搜索、项目/优先级/标签/负责人筛选 |
-| Needs you | 自动汇聚未回答问题、阻塞、待审核任务，优先级：问题 > 阻塞 > 审核 |
-| 审批 | 卡片内直接选择选项、备注、Approve / Reject；也支持抽屉内操作 |
-| 任务详情 | 状态、优先级、标签、描述、阻塞、链接、问题、评论、附件、活动 |
-| 协作 | 评论、附件上传/下载/删除、链接、活动流 |
-| 归档 | 归档任务列表按项目分组、搜索、恢复、永久删除；归档项目只读 |
-| 体验 | 中英文切换、浅色/深色主题、键盘焦点管理、Escape 关闭、减少动画 |
+| **Four-column board** | Backlog, Running, Needs you, Done. Drag to move, drag to reorder, collapse columns. |
+| **Needs you** | A derived column for unanswered questions, blockers and reviews. Precedence: question → blocker → review. |
+| **Approvals in the card** | Pick an option, add a note, approve or reject. Approval moves to Done; rejection returns to Backlog. |
+| **Native task drawer** | Status, priority, labels, description, blocker, links, request input, comments, attachments, activity. |
+| **Durable Host storage** | `storageDomain` records survive refresh and restart. Attachments use DSH attachment storage. |
+| **Archive and read-only** | Archive projects and tasks; restore them later. Archived projects open read-only with a restore banner. |
+| **Search and filters** | Search title, description, project and labels. Filter by project, priority, label or assignee. |
+| **DSH-native UI** | Theme tokens, `zh` / `en` locale, focus management, reduced-motion support. |
 
-## 安装
+## 🚀 Quick start
 
-### 前置条件
-
-- 已安装 DeepSeek Harness（桌面版或带 Web UI 的 Host）
-- Node.js 22+
-- pnpm 10+
-
-### 从源码安装
+**Requirements:** DSH `0.2.1-rc.2` or newer, Node.js 22+, pnpm 10+.
 
 ```bash
 git clone https://github.com/SilasSolivagus/dsh-kanban.git
@@ -46,188 +69,124 @@ pnpm install
 pnpm check
 ```
 
-`pnpm check` 会先构建 `index.js` / `client.js`，再运行测试。构建产物已提交在仓库里，所以普通安装不需要自己构建；修改源码后才需要重新 `pnpm build`。
+Then:
 
-然后在 DSH 的插件管理页面安装本地 bundle：
+1. Open **DSH → Settings → Plugins**.
+2. Choose **Install local bundle** and select this folder (the one with `package.json`).
+3. Enable `@local/dsh-kanban`.
+4. Refresh DSH and click **Kanban** in the sidebar.
 
-1. 打开 **设置 → 插件**（Plugins）。
-2. 选择安装本地目录 / Install local bundle。
-3. 选择克隆下来的 `dsh-kanban` 目录（包含 `package.json` 的那一层）。
-4. 启用 `@local/dsh-kanban`。
-5. 刷新 DSH 页面。
-
-安装后，插件会以 `link:` 形式挂到当前 profile，例如：
-
-```json
-{
-  "dependencies": {
-    "@local/dsh-kanban": "link:/path/to/dsh-kanban"
-  }
-}
-```
-
-刷新后，侧边栏会出现「看板 / Kanban」入口；点击即可打开四列看板。
-
-### 升级
+The profile keeps a link to this folder, so updates are:
 
 ```bash
-cd dsh-kanban
 git pull
 pnpm install
 pnpm check
 ```
 
-然后在 DSH 插件页禁用再启用一次 `@local/dsh-kanban`，或重启 DSH，最后刷新页面。
+Then disable/enable `@local/dsh-kanban` once and refresh.
 
-> 如果升级后仍看到旧界面，先强制刷新页面；再不行就在插件页禁用/启用一次，让 Host 和 Client 重新加载 bundle。
+> `pnpm check` builds `index.js` / `client.js` and runs the full suite. Both generated bundles are committed, so a fresh install does not need a build step.
 
-## 快速使用
+## 🧭 How it works
 
-1. 打开侧边栏「看板」。
-2. 顶部项目菜单 → **创建项目**，填项目名称（可选填工作区路径）。
-3. 在 **Backlog** 列点 **+ 新建卡片** 创建第一个任务。
-4. 把卡片拖到 **Running**；需要输入/确认时，任务会自动出现在 **Needs you**。
-5. 在卡片或任务抽屉里处理问题、阻塞或审核，再拖到 **Done**。
-6. 点卡片标题打开任务详情，继续添加评论、附件、链接或查看活动。
+```mermaid
+flowchart LR
+  subgraph Web["DSH Web UI"]
+    slot["main + sidebar slots"]
+    ui["Board / Drawer / Dialogs"]
+  end
 
-完整操作说明见 **[docs/usage.md](docs/usage.md)**。
+  subgraph Host["DSH Host"]
+    api["/kanban-api"]
+    store["KanbanStore"]
+    domain[("storageDomain")]
+    files[("attachments")]
+  end
 
-## 看板规则
+  slot --> ui
+  ui -->|"JSON + task version"| api
+  api --> store
+  store --> domain
+  store --> files
+```
 
-### 四列与内部状态
+- **Client:** registers slots and locale, renders the board, drawer and dialogs, calls `/kanban-api`.
+- **Host:** owns the domain, routes, validation and optimistic concurrency. Every task write carries a `version`; stale writes get `TASK_VERSION_CONFLICT` (HTTP 409).
+- **Storage:** project/task/comment/activity records in `storageDomain`; attachment bytes through `ctx.attachments`; only column-collapse preferences use localStorage.
 
-| 列 | 包含的状态 | 说明 |
+### Why native instead of an iframe
+
+| | iframe board | DSH Kanban |
 | --- | --- | --- |
-| Backlog | `backlog`、`todo` | 待立项 / 等待认领 |
-| Running | `in_progress` | 正在处理 |
-| Needs you | 派生列 | 有问题、阻塞或待审核的任务 |
-| Done | `done` | 已完成 |
+| Theme and locale | drifts from the app | native tokens + locale |
+| Persistence | browser localStorage | Host `storageDomain` |
+| Attachments | awkward bridge | DSH attachment service |
+| Navigation | nested page | `main` + `sidebar.panellist` |
+| Approvals | separate workflow | real Needs you queue |
 
-`canceled` 是 Host 支持的存储状态，但当前四列界面不展示，也不会出现在 UI 的状态选择器里，避免任务“消失”。
+## 📸 Inside a task
 
-### 拖拽限制
+<p align="center">
+  <img src="docs/assets/kanban-drawer.png" alt="Task drawer with properties, blocker, links, comments and attachments" width="100%" />
+</p>
 
-- 不能直接拖入 **Needs you**：这一列由系统自动生成。
-- 处于 Needs you 的任务不能拖出，除非先处理掉问题/阻塞/审核。
-- 处于 Needs you 的任务不能直接拖入 Done。
-- Backlog 内部拖动会保留 `backlog` / `todo` 的原状态。
-- 拖拽排序使用 `sortOrder`；并列值会自动重排，失败会重新加载并提示。
+The drawer is the full record, not a read-only preview: edit properties, set or clear a blocker, request input, answer questions, add links, comments and attachments, and read the activity stream.
 
-### Needs you 的优先级
+## 🗺️ Roadmap
 
-1. **未回答问题**（`question`）
-2. **阻塞**（`blocked`）
-3. **待审核**（`review`）
+- [x] **v2.0.0** — native DSH page, four-column board, approvals, comments, attachments, archive and read-only projects
+- [ ] Saved filter views
+- [ ] Keyboard-first command palette and quick add
+- [ ] Import / export (JSON and Markdown)
+- [ ] Real-time multi-user collaboration
+- [ ] Mobile-friendly layout
 
-同一任务同时满足多个条件时，按上面的顺序展示。
+Planned, not promised. Open an issue if you want to shape the order.
 
-### 审批
-
-- 有未回答问题：选择选项 → 填写可选备注 → **Approve** 或 **Reject**。
-- Approve → `done`；Reject → `backlog`。
-- 无问题、仅处于 `in_review`：显示 **Confirm / Return**。
-- 任务有阻塞时不能 Approve；先清除阻塞。
-- 所有写操作携带 `version`；版本冲突会重新加载详情并提示。
-
-## 数据与限制
-
-- 项目、任务、评论、附件元数据、活动记录都存在 DSH `storageDomain` 中。
-- 附件字节通过 DSH `ctx.attachments` 存储，下载走 `/kanban-api/attachments/:id`。
-- 不使用 localStorage 保存业务数据；只有列折叠状态会用 localStorage 记住。
-- 不使用 iframe、SQLite 或外部服务。
-
-| 限制 | 值 |
-| --- | --- |
-| 项目名称 | 1–120 字符 |
-| 任务标题 | 1–240 字符 |
-| 任务描述 | ≤100,000 字符 |
-| 评论 | 1–10,000 字符 |
-| 标签 | 每任务 ≤20 个，每个 ≤64 字符 |
-| 链接 | 每任务 ≤50 个，必须是 http(s) |
-| 附件 | 单文件 ≤20 MiB，每任务 ≤50 个 |
-| 问题选项 | 2–5 个 |
-
-这是单用户、本地优先的看板：没有实时多人协作，也没有云端同步；数据跟随当前 DSH profile。
-
-## 开发
-
-### 常用命令
+## 🛠️ Development
 
 ```bash
-pnpm build      # 构建 Host index.js 和 Client client.js
+pnpm build      # build Host index.js + Client client.js
 pnpm test       # node --test
 pnpm check      # build + test
 ```
 
-### 目录结构
-
 ```text
 src/
-  host/
-    entry.js      # DSH Host 入口：打开 domain、注册 /kanban-api
-    domain.js     # storageDomain 表声明（纯对象，无运行时 DSH 依赖）
-    schema.js     # zod 记录 schema
-    store.js      # 项目/任务/评论/附件/活动的领域逻辑
-    http.js       # /kanban-api 路由与附件下载
-    __tests__/    # Host 测试
-  client/
-    index.jsx     # slot/locale 注册
-    api.js        # Browser API 封装
-    board-state.js
-    drawer-state.js
-    components/   # App / Board / Column / TaskCard / TaskDrawer / dialogs
-    styles.css
-  shared/         # 状态、列、attention 规则
-scripts/build.mjs # esbuild：Host ESM + Client ModuleLoader 包装
-locale/           # zh/en 插件元数据
+  host/          # entry, domain, schema, store, HTTP routes
+  client/        # slots, app shell, board, cards, drawer, dialogs
+  shared/        # statuses, columns, attention rules
+scripts/build.mjs
+locale/          # plugin metadata (zh / en)
+docs/            # usage guide and screenshots
 ```
 
-### 构建产物
+- `index.js` is the Host bundle; runtime DSH packages are external.
+- `client.js` is the Client bundle wrapped for `window.__ModuleLoader__`.
+- Tests use Node's built-in test runner; no browser test dependency is required.
 
-- `index.js`：Host bundle；只把 `@deepseek-ai/*` 当运行时外部依赖，当前版本已不直接 import DSH 包。
-- `client.js`：Client bundle；由 `window.__ModuleLoader__.load({ id, factory })` 包装，React 为外部依赖。
-- 两个文件都提交在仓库中；发布/安装前请确保它们与源码一致（`pnpm check`）。
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the PR checklist.
 
-### API
+## 📚 Documentation
 
-完整接口示例见 [docs/usage.md](docs/usage.md#12-api-速查)。最常用的：
+- [Usage guide (English)](docs/usage.en.md)
+- [使用说明（中文）](docs/usage.md)
+- [Design notes](docs/superpowers/specs/2026-10-21-dsh-kanban-design.md)
+- [Implementation plan](docs/superpowers/plans/2026-10-21-dsh-kanban.md)
 
-```bash
-curl http://127.0.0.1:51970/kanban-api/bootstrap
-```
+## 🤝 Contributing
 
-返回：
+Issues and pull requests are welcome.
 
-```json
-{ "projects": [], "tasks": [] }
-```
+- Found a bug? Open an issue with DSH version, OS and reproduction steps.
+- Built something useful? Send a focused PR with a test.
+- Like the direction? Star the repo — it helps other DSH users find it.
 
-## 故障排查
+## 📄 License
 
-### 侧边栏没有「看板」
+[MIT](LICENSE) © 2026 Silas Solivagus.
 
-1. 确认插件已启用：设置 → 插件 → `@local/dsh-kanban`。
-2. 刷新页面。
-3. 如果刚升级过，禁用再启用插件，或重启 DSH。
+## 🙏 Acknowledgements
 
-### 看板显示“无法加载”
-
-```bash
-curl -i http://127.0.0.1:51970/kanban-api/bootstrap
-```
-
-- `200`：Host 正常，刷新页面即可。
-- `404`：插件没有注册路由，检查插件是否 active。
-- `500`：查看 DSH 日志；通常是 Host 启动异常。
-
-### 端口不是 51970
-
-以当前 DSH 窗口地址为准；`51970` 只是本次运行示例。
-
-### 数据会丢吗
-
-不会。业务数据在 DSH storageDomain 中，按 profile 保存。卸载插件不会自动删除 domain；重装后仍会读回。
-
-## 版本
-
-`2.0.0` — 原生 DSH 版本，替代早期基于 localStorage 的原型。
+Built on DSH's native slot, locale, `storageDomain`, attachment and HTTP services. Thanks to the DeepSeek Harness team for making a plugin surface that is worth building on.
