@@ -117,7 +117,14 @@ export function App({ t }) {
     const measure = () => {
       frame = 0
       const rail = document.querySelector('[class*="_root"][class*="_collapsed"]')
-      const railRect = rail?.getBoundingClientRect()
+      let railRect = rail?.getBoundingClientRect()
+      if (!railRect || railRect.width <= 0) {
+        // Windowed desktop builds can render the collapsed sidebar as an
+        // overlay without the docked rail node. Measure the open toggle
+        // instead; it is the control that would cover the switcher.
+        const toggle = document.querySelector('button[aria-label="打开侧边栏"], button[aria-label="展开侧边栏"]')
+        railRect = toggle?.getBoundingClientRect()
+      }
       if (!railRect || railRect.width <= 0) {
         root.style.removeProperty('--dkb-rail-safe')
         delete root.dataset.sidebarCollapsed

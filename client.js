@@ -4551,7 +4551,11 @@ function App({ t }) {
     const measure = () => {
       frame = 0;
       const rail = document.querySelector('[class*="_root"][class*="_collapsed"]');
-      const railRect = rail?.getBoundingClientRect();
+      let railRect = rail?.getBoundingClientRect();
+      if (!railRect || railRect.width <= 0) {
+        const toggle = document.querySelector('button[aria-label="\u6253\u5F00\u4FA7\u8FB9\u680F"], button[aria-label="\u5C55\u5F00\u4FA7\u8FB9\u680F"]');
+        railRect = toggle?.getBoundingClientRect();
+      }
       if (!railRect || railRect.width <= 0) {
         root.style.removeProperty("--dkb-rail-safe");
         delete root.dataset.sidebarCollapsed;
