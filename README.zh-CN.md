@@ -187,6 +187,8 @@ PR 前请看 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 🤝 贡献
 
+Join the conversation in [GitHub Discussions](https://github.com/SilasSolivagus/dsh-kanban/discussions).
+
 欢迎 issue 和 PR。
 
 - 发现 bug：附上 DSH 版本、系统、复现步骤。

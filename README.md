@@ -187,6 +187,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the PR checklist.
 
 ## 🤝 Contributing
 
+Join the conversation in [GitHub Discussions](https://github.com/SilasSolivagus/dsh-kanban/discussions).
+
 Issues and pull requests are welcome.
 
 - Found a bug? Open an issue with DSH version, OS and reproduction steps.
