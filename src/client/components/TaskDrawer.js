@@ -9,6 +9,10 @@ import React, {
 } from 'react'
 import { attentionReason } from '../../shared/rules.js'
 import { PRIORITIES, STATUSES } from '../../shared/statuses.js'
+
+// Canceled is a stored terminal state but has no board column; keep it out of
+// the editable status control so a task cannot disappear from the board.
+const EDITABLE_STATUSES = STATUSES.filter((status) => status !== 'canceled')
 import { api } from '../api.js'
 import {
   MAX_ATTACHMENT_BYTES,
@@ -544,7 +548,7 @@ export function TaskDrawer({ taskId, projects = [], onClose, onChanged, onArchiv
                 disabled={controlsDisabled}
                 aria-label={t('taskStatus')}
               >
-                {STATUSES.map((value) => <option key={value} value={value}>{t(`status_${value}`)}</option>)}
+                {EDITABLE_STATUSES.map((value) => <option key={value} value={value}>{t(`status_${value}`)}</option>)}
               </select>
             </Field>
             <Field label={t('taskPriority')}>

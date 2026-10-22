@@ -1627,6 +1627,7 @@ function ArchivedTasksDialog({
 }
 
 // src/client/components/TaskDrawer.js
+var EDITABLE_STATUSES = STATUSES.filter((status) => status !== "canceled");
 var FOCUSABLE2 = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 var DEFAULT_CONTENT_TYPE = "application/octet-stream";
 var FIELD_LABEL_KEYS = {
@@ -2075,7 +2076,7 @@ function TaskDrawer({ taskId, projects = [], onClose, onChanged, onArchived, t }
           disabled: controlsDisabled,
           "aria-label": t("taskStatus")
         },
-        STATUSES.map((value) => /* @__PURE__ */ import_react9.default.createElement("option", { key: value, value }, t(`status_${value}`)))
+        EDITABLE_STATUSES.map((value) => /* @__PURE__ */ import_react9.default.createElement("option", { key: value, value }, t(`status_${value}`)))
       )), /* @__PURE__ */ import_react9.default.createElement(Field2, { label: t("taskPriority") }, /* @__PURE__ */ import_react9.default.createElement(
         "select",
         {
