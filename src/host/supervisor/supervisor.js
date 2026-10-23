@@ -34,7 +34,7 @@ import { buildWorkerPrompt, parseWorkerResult } from './prompt.js'
 
 export const SUPERVISOR_ERROR = 'SUPERVISOR_ERROR'
 
-const ASSIGNMENT_STATUSES = Object.freeze(['todo', 'backlog'])
+const ASSIGNMENT_STATUSES = Object.freeze(['todo', 'backlog', 'in_progress'])
 const BOARD_METHODS = Object.freeze([
   'listAssigned',
   'getTask',
@@ -264,6 +264,9 @@ export class Supervisor {
     }
     if (isTerminalStatus(task.status)) {
       return this.#report(worker, taskId, 'skipped', { reason: 'terminal' })
+    }
+    if (task.blockedReason || task.pendingQuestion) {
+      return this.#report(worker, taskId, 'skipped', { reason: 'attention' })
     }
 
     let activeLease

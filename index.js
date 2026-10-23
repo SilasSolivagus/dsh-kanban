@@ -22507,7 +22507,7 @@ function parseWorkerResult(text) {
 
 // src/host/supervisor/supervisor.js
 var SUPERVISOR_ERROR = "SUPERVISOR_ERROR";
-var ASSIGNMENT_STATUSES = Object.freeze(["todo", "backlog"]);
+var ASSIGNMENT_STATUSES = Object.freeze(["todo", "backlog", "in_progress"]);
 var BOARD_METHODS = Object.freeze([
   "listAssigned",
   "getTask",
@@ -22696,6 +22696,9 @@ var Supervisor = class {
     }
     if (isTerminalStatus(task.status)) {
       return this.#report(worker, taskId, "skipped", { reason: "terminal" });
+    }
+    if (task.blockedReason || task.pendingQuestion) {
+      return this.#report(worker, taskId, "skipped", { reason: "attention" });
     }
     let activeLease;
     try {

@@ -292,7 +292,7 @@ test('one card is claimed, prompted, and completed with evidence', async (t) => 
   // Assignment is queried with the card's ready statuses.
   assert.deepEqual(world.calls.listAssigned[0], {
     actorId: 'builder',
-    statuses: ['todo', 'backlog'],
+    statuses: ['todo', 'backlog', 'in_progress'],
   })
 
   // Claim carries the full agent actor and a lease that outlives the prompt.
@@ -384,6 +384,31 @@ test('a done result without evidence is treated as blocked', async (t) => {
   assert.equal(world.calls.comment.length, 1)
   assert.match(world.calls.comment[0].body, /evidence/i)
   assert.equal(world.leases.active.size, 0)
+})
+
+test('an expired in_progress card is reclaimed and prompted', async (t) => {
+  const world = makeWorld(t)
+  const card = world.seed({ status: 'in_progress' })
+
+  const results = await world.makeSupervisor().runOnce()
+
+  assert.equal(results[0].outcome, 'done')
+  assert.equal(world.calls.claim.length, 1)
+  assert.equal(world.calls.prompt.length, 1)
+  assert.equal(world.tasks.get(card.id).status, 'done')
+})
+
+test('a blocked in_progress card is never re-prompted', async (t) => {
+  const world = makeWorld(t)
+  const card = world.seed({ status: 'in_progress', blockedReason: 'Need input' })
+
+  const results = await world.makeSupervisor().runOnce()
+
+  assert.equal(results[0].outcome, 'skipped')
+  assert.equal(results[0].reason, 'attention')
+  assert.equal(world.calls.claim.length, 0)
+  assert.equal(world.calls.prompt.length, 0)
+  assert.equal(world.tasks.get(card.id).blockedReason, 'Need input')
 })
 
 test('an active lease is skipped after a restart, with no duplicate prompt', async (t) => {
