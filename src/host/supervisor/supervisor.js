@@ -3,26 +3,28 @@
  *
  * One supervisor process owns the board writes. A cycle asks each configured
  * worker for its ready cards, leases one card at a time, wakes the worker's
- * persistent DSH session, and turns the worker's JSON result into either a Done
- * card or a blocked card that stays in progress for a human.
+ * persistent DSH session, and turns the worker's JSON result into either a
+ * Done card, a blocked card that stays in progress for a human, or — when a
+ * reviewer is configured — a card submitted for review.
  *
  * Durability rules:
  * - The lease is claimed before any session/prompt work and persisted by the
  *   lease store. A restart mid-card therefore sees an active lease and skips
  *   the card instead of prompting twice.
  * - The session ids are persisted by DshWorkerSession.ensure before the prompt.
- * - The lease is released on every terminal path (done, blocked, error),
- *   including when a comment or status write fails. The only exception is a
- *   release failure after the card is already done; the card cannot be picked
- *   up again because Done is terminal, and the stale lease expires on its own.
+ * - The lease is released on every terminal path (done, reviewing, blocked,
+ *   error), including when a comment or status write fails. The only exception
+ *   is a release failure after the card is already done; the card cannot be
+ *   picked up again because Done is terminal, and the stale lease expires on
+ *   its own.
  *
  * Failure rules:
  * - A done result requires evidence (parseWorkerResult enforces it).
  * - A turn that stops with reason "error" is blocked even when its text looks
  *   like a valid done result.
- * - If the evidence comment or the Done status write fails, the card is left in
+ * - If the evidence comment or the status write fails, the card is left in
  *   progress and a best-effort blocked comment is added. A card is never marked
- *   done without both writes succeeding.
+ *   done or submitted for review without both writes succeeding.
  */
 
 import {
@@ -40,6 +42,7 @@ const BOARD_METHODS = Object.freeze([
   'getTask',
   'claim',
   'updateStatus',
+  'submitForReview',
   'comment',
   'block',
   'release',
@@ -352,18 +355,29 @@ export class Supervisor {
       })
     }
 
+    const reviewers = this.#workers.filter((worker) => worker.role === 'reviewer')
+    const handoff = reviewers.length > 0
+
     try {
-      await this.#board.updateStatus(current.id, current.version, 'done', actor)
+      if (handoff) {
+        await this.#board.submitForReview(current.id, current.version, actor)
+      } else {
+        await this.#board.updateStatus(current.id, current.version, 'done', actor)
+      }
     } catch (error) {
       return this.#blocked(worker, current, actor, {
-        error: contextualError('cannot mark card done', error),
+        error: contextualError(
+          handoff ? 'cannot submit card for review' : 'cannot mark card done',
+          error,
+        ),
       })
     }
 
-    // The card is done. A release failure cannot cause a duplicate prompt
-    // because Done cards are never listed as assigned work again.
+    // The card is done (or handed to review). A release failure cannot cause a
+    // duplicate prompt: Done cards are never listed as assigned work again, and
+    // the builder no longer owns a reviewing card.
     const releaseError = await this.#release(current.id, actor)
-    return this.#report(worker, current.id, 'done', releaseError === null
+    return this.#report(worker, current.id, handoff ? 'review' : 'done', releaseError === null
       ? {}
       : { releaseError: reasonFor(releaseError) })
   }

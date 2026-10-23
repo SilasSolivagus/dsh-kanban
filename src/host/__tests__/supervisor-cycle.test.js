@@ -20,6 +20,13 @@ const WORKER = Object.freeze({
   promptFile: '/tmp/builder.md',
 })
 
+const REVIEWER = Object.freeze({
+  ...WORKER,
+  id: 'reviewer',
+  name: 'Reviewer',
+  role: 'reviewer',
+})
+
 const ROLE_PROMPT = 'Builder role rules:\n- Work only on the assigned card.'
 
 function clone(value) {
@@ -63,6 +70,7 @@ function makeWorld(t, options = {}) {
     getTask: [],
     claim: [],
     updateStatus: [],
+    submitForReview: [],
     comment: [],
     block: [],
     release: [],
@@ -148,6 +156,18 @@ function makeWorld(t, options = {}) {
       if (!task) throw failure('TASK_NOT_FOUND', `task ${id} not found`)
       if (task.version !== version) throw failure('TASK_VERSION_CONFLICT', 'task changed elsewhere')
       task.status = status
+      task.version += 1
+      return clone(task)
+    },
+
+    async submitForReview(id, version, actor) {
+      calls.submitForReview.push({ id, version, status: 'reviewing', actor: clone(actor) })
+      events.push({ type: 'submitForReview', id })
+      failIf('submitForReview', { id, version, actor })
+      const task = tasks.get(id)
+      if (!task) throw failure('TASK_NOT_FOUND', `task ${id} not found`)
+      if (task.version !== version) throw failure('TASK_VERSION_CONFLICT', 'task changed elsewhere')
+      task.status = 'reviewing'
       task.version += 1
       return clone(task)
     },
@@ -252,7 +272,7 @@ function makeWorld(t, options = {}) {
     return new Supervisor({
       dsh: { name: 'fake-dsh' },
       board,
-      workers: [WORKER],
+      workers: options.workers ?? [WORKER],
       leases,
       sessions,
       readRolePrompt,
@@ -320,6 +340,70 @@ test('one card is claimed, prompted, and completed with evidence', async (t) => 
   assert.match(world.calls.comment[0].body, /pnpm test -> 12 passed/)
   assert.equal(world.calls.updateStatus.length, 1)
   assert.equal(world.calls.updateStatus[0].status, 'done')
+  assert.equal(world.calls.release.length, 1)
+  assert.equal(world.leases.active.size, 0)
+})
+
+test('a builder done result is handed to reviewing when a reviewer exists', async (t) => {
+  const world = makeWorld(t, { workers: [WORKER, REVIEWER] })
+  const card = world.seed()
+
+  const results = await world.makeSupervisor().runOnce()
+
+  assert.equal(results.length, 1)
+  assert.equal(results[0].outcome, 'review')
+  assert.equal(world.tasks.get(card.id).status, 'reviewing')
+
+  // The handoff uses the dedicated review operation, not a done status write.
+  assert.equal(world.calls.submitForReview.length, 1)
+  assert.equal(world.calls.submitForReview[0].id, card.id)
+  assert.equal(world.calls.submitForReview[0].version, 2)
+  assert.deepEqual(world.calls.submitForReview[0].actor, ACTOR)
+  assert.equal(world.calls.updateStatus.some((call) => call.status === 'done'), false)
+
+  // Evidence is still commented before the handoff, and the lease is released.
+  assert.equal(world.calls.comment.length, 1)
+  assert.match(world.calls.comment[0].body, /pnpm test -> 12 passed/)
+  assert.equal(world.calls.release.length, 1)
+  assert.equal(world.leases.active.size, 0)
+  assert.deepEqual(
+    world.events.map((event) => event.type),
+    ['claim', 'ensure', 'readRolePrompt', 'prompt', 'comment', 'submitForReview', 'release'],
+  )
+})
+
+test('a builder can still go straight to done when no reviewer is configured', async (t) => {
+  const world = makeWorld(t)
+  const card = world.seed()
+
+  const results = await world.makeSupervisor().runOnce()
+
+  assert.equal(results[0].outcome, 'done')
+  assert.equal(world.tasks.get(card.id).status, 'done')
+  assert.equal(world.calls.submitForReview.length, 0)
+  assert.deepEqual(
+    world.events.map((event) => event.type),
+    ['claim', 'ensure', 'readRolePrompt', 'prompt', 'comment', 'updateStatus', 'release'],
+  )
+})
+
+test('a failed review handoff blocks the card and releases the lease', async (t) => {
+  const writeFailure = failure('TASK_WRITE_FAILED', 'board write failed')
+  const world = makeWorld(t, {
+    workers: [WORKER, REVIEWER],
+    failures: { submitForReview: writeFailure },
+  })
+  const card = world.seed()
+
+  const results = await world.makeSupervisor().runOnce()
+
+  assert.equal(results[0].outcome, 'blocked')
+  assert.equal(world.tasks.get(card.id).status, 'in_progress')
+  assert.equal(world.calls.submitForReview.length, 1)
+  assert.equal(world.calls.updateStatus.length, 0)
+  assert.equal(world.calls.comment.length, 2)
+  assert.match(world.calls.comment[1].body, /TASK_WRITE_FAILED/)
+  assert.match(world.calls.comment[1].body, /board write failed/)
   assert.equal(world.calls.release.length, 1)
   assert.equal(world.leases.active.size, 0)
 })
@@ -624,6 +708,7 @@ function completeBoard() {
     },
     claim() {},
     updateStatus() {},
+    submitForReview() {},
     comment() {},
     block() {},
     release() {},
