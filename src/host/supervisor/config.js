@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,7 +7,13 @@ import { fileURLToPath } from 'node:url'
 // The committed example only documents the shape.
 export const WORKERS_FILE_ENV = 'DSH_KANBAN_WORKERS_FILE'
 export const DEFAULT_WORKERS_FILE = join(homedir(), '.dsh', 'kanban-workers.json')
-export const DEFAULT_PROMPT_DIR = fileURLToPath(new URL('../../../docs/agents', import.meta.url))
+const PROMPT_DIR_CANDIDATES = [
+  // Source layout: src/host/supervisor/config.js -> repo/docs/agents
+  fileURLToPath(new URL('../../../docs/agents', import.meta.url)),
+  // Bundled layout: index.js at package root -> repo/docs/agents
+  fileURLToPath(new URL('./docs/agents', import.meta.url)),
+]
+export const DEFAULT_PROMPT_DIR = PROMPT_DIR_CANDIDATES.find((candidate) => existsSync(candidate)) ?? PROMPT_DIR_CANDIDATES[0]
 
 // P1 has one human-facing role and one worker role. A role is only usable
 // when its prompt file exists under docs/agents/.
