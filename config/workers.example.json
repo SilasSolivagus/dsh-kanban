@@ -1,0 +1,12 @@
+{
+  "workers": [
+    {
+      "id": "builder",
+      "name": "Builder",
+      "role": "builder",
+      "cwd": "/Users/you/worktrees/builder",
+      "maxConcurrent": 1,
+      "timeoutSeconds": 900
+    }
+  ]
+}
