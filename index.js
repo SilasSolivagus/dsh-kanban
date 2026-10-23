@@ -20488,10 +20488,12 @@ var KanbanStore = class {
         throw Object.assign(new Error("Resolve attention before Done"), { code: "TASK_NEEDS_ATTENTION" });
       }
       const now = this.#now();
+      const reviewing = task.status === "reviewing";
+      const nextStatus = reviewing ? "reviewing" : cleanDecision === "approve" ? "done" : "backlog";
       const next = {
         ...task,
-        status: cleanDecision === "approve" ? "done" : "backlog",
-        statusSince: now,
+        status: nextStatus,
+        statusSince: nextStatus === task.status ? task.statusSince : now,
         questionResolution: {
           decision: cleanDecision,
           optionId: option?.id ?? null,
@@ -22606,22 +22608,29 @@ function parseEvidenceList(evidence, label) {
   }
   return evidence.slice();
 }
+function parseSummary(summary, label) {
+  if (!isNonEmptyString4(summary)) {
+    throw resultError(`${label} summary must be a non-empty string`);
+  }
+  if (summary.length > MAX_SUMMARY_LENGTH) {
+    throw resultError(`${label} summary must be ${MAX_SUMMARY_LENGTH} characters or fewer`);
+  }
+  return summary;
+}
 function parseWorkerResult(text) {
   const value = singleResultObject(text, "worker result");
   const { outcome, summary, evidence, notes } = value;
   if (outcome !== "done" && outcome !== "blocked") {
     throw resultError('worker result outcome must be "done" or "blocked"');
   }
-  if (!isNonEmptyString4(summary)) {
-    throw resultError("worker result summary must be a non-empty string");
-  }
+  const parsedSummary = parseSummary(summary, "worker result");
   const parsedEvidence = parseEvidenceList(evidence, "worker result");
   if (outcome === "done" && parsedEvidence.length === 0) {
     throw resultError('worker result outcome "done" requires at least one evidence entry');
   }
   return {
     outcome,
-    summary,
+    summary: parsedSummary,
     evidence: parsedEvidence,
     notes: typeof notes === "string" ? notes : ""
   };
@@ -22632,16 +22641,14 @@ function parseReviewResult(text) {
   if (verdict !== "pass" && verdict !== "reject") {
     throw resultError('review result verdict must be "pass" or "reject"');
   }
-  if (!isNonEmptyString4(summary)) {
-    throw resultError("review result summary must be a non-empty string");
-  }
+  const parsedSummary = parseSummary(summary, "review result");
   const parsedEvidence = parseEvidenceList(evidence, "review result");
   if (verdict === "pass" && parsedEvidence.length === 0) {
     throw resultError('review result verdict "pass" requires at least one evidence entry');
   }
   return {
     verdict,
-    summary,
+    summary: parsedSummary,
     evidence: parsedEvidence,
     notes: typeof notes === "string" ? notes : ""
   };
@@ -23102,16 +23109,16 @@ var Supervisor = class {
    *
    * Only non-empty string bodies reach the prompt: blank comments are not
    * evidence, and the prompt contract rejects a non-string entry. A detail read
-   * failure is logged and treated as "no evidence" so a comment-store hiccup
-   * cannot mark work done.
+   * failure fails closed: the caller turns it into a blocked card instead of
+   * asking the reviewer to judge a card with no evidence, which could be passed
+   * by mistake.
    */
   async #builderEvidence(taskId) {
     let detail;
     try {
       detail = await this.#board.getTaskDetail(taskId);
     } catch (error62) {
-      this.#log("warn", `cannot read builder evidence for card ${taskId}: ${reasonFor(error62)}`);
-      return [];
+      throw contextualError("cannot read builder evidence", error62);
     }
     const builderId = detail?.task?.assignee?.id;
     if (!isNonEmptyString5(builderId)) return [];

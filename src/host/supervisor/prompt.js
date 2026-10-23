@@ -367,6 +367,27 @@ function parseEvidenceList(evidence, label) {
 }
 
 /**
+ * Validate the summary shared by both result contracts.
+ *
+ * The 500-character bound is part of the prompt contract. Enforcing it before
+ * the supervisor stores a summary keeps a reply from becoming an unbounded
+ * `blockedReason` (a reject summary is written there verbatim).
+ *
+ * @param {unknown} summary
+ * @param {string} label
+ * @returns {string}
+ */
+function parseSummary(summary, label) {
+  if (!isNonEmptyString(summary)) {
+    throw resultError(`${label} summary must be a non-empty string`)
+  }
+  if (summary.length > MAX_SUMMARY_LENGTH) {
+    throw resultError(`${label} summary must be ${MAX_SUMMARY_LENGTH} characters or fewer`)
+  }
+  return summary
+}
+
+/**
  * Parse and validate the worker's final reply.
  *
  * @param {string} text
@@ -379,9 +400,7 @@ export function parseWorkerResult(text) {
   if (outcome !== 'done' && outcome !== 'blocked') {
     throw resultError('worker result outcome must be "done" or "blocked"')
   }
-  if (!isNonEmptyString(summary)) {
-    throw resultError('worker result summary must be a non-empty string')
-  }
+  const parsedSummary = parseSummary(summary, 'worker result')
 
   const parsedEvidence = parseEvidenceList(evidence, 'worker result')
 
@@ -391,7 +410,7 @@ export function parseWorkerResult(text) {
 
   return {
     outcome,
-    summary,
+    summary: parsedSummary,
     evidence: parsedEvidence,
     notes: typeof notes === 'string' ? notes : '',
   }
@@ -413,9 +432,7 @@ export function parseReviewResult(text) {
   if (verdict !== 'pass' && verdict !== 'reject') {
     throw resultError('review result verdict must be "pass" or "reject"')
   }
-  if (!isNonEmptyString(summary)) {
-    throw resultError('review result summary must be a non-empty string')
-  }
+  const parsedSummary = parseSummary(summary, 'review result')
 
   const parsedEvidence = parseEvidenceList(evidence, 'review result')
 
@@ -425,7 +442,7 @@ export function parseReviewResult(text) {
 
   return {
     verdict,
-    summary,
+    summary: parsedSummary,
     evidence: parsedEvidence,
     notes: typeof notes === 'string' ? notes : '',
   }

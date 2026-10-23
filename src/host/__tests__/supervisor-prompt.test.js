@@ -278,6 +278,27 @@ test('non-string summary is rejected', () => {
   )
 })
 
+test('worker summary longer than 500 characters is rejected', () => {
+  const accepted = parseWorkerResult(JSON.stringify({
+    outcome: 'blocked',
+    summary: 'x'.repeat(500),
+  }))
+  assert.equal(accepted.summary.length, 500)
+
+  parseError(
+    () => parseWorkerResult(JSON.stringify({ outcome: 'blocked', summary: 'x'.repeat(501) })),
+    /summary/i,
+  )
+  parseError(
+    () => parseWorkerResult(JSON.stringify({
+      outcome: 'done',
+      summary: 'x'.repeat(501),
+      evidence: ['pnpm test -> 1 passed'],
+    })),
+    /500/,
+  )
+})
+
 test('evidence must be an array of non-empty strings', () => {
   parseError(
     () => parseWorkerResult('{"outcome":"done","summary":"ok","evidence":"pnpm test"}'),
@@ -526,6 +547,32 @@ test('review summary must be a non-empty string', () => {
   parseError(
     () => parseReviewResult(JSON.stringify({ verdict: 'reject', evidence: [] })),
     /summary/i,
+  )
+})
+
+test('review summary longer than 500 characters is rejected', () => {
+  const accepted = parseReviewResult(JSON.stringify({
+    verdict: 'reject',
+    summary: 'x'.repeat(500),
+    evidence: [],
+  }))
+  assert.equal(accepted.summary.length, 500)
+
+  parseError(
+    () => parseReviewResult(JSON.stringify({
+      verdict: 'reject',
+      summary: 'x'.repeat(501),
+      evidence: [],
+    })),
+    /summary/i,
+  )
+  parseError(
+    () => parseReviewResult(JSON.stringify({
+      verdict: 'pass',
+      summary: 'x'.repeat(501),
+      evidence: ['pnpm test -> 1 passed'],
+    })),
+    /500/,
   )
 })
 

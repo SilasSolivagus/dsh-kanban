@@ -595,16 +595,16 @@ export class Supervisor {
    *
    * Only non-empty string bodies reach the prompt: blank comments are not
    * evidence, and the prompt contract rejects a non-string entry. A detail read
-   * failure is logged and treated as "no evidence" so a comment-store hiccup
-   * cannot mark work done.
+   * failure fails closed: the caller turns it into a blocked card instead of
+   * asking the reviewer to judge a card with no evidence, which could be passed
+   * by mistake.
    */
   async #builderEvidence(taskId) {
     let detail
     try {
       detail = await this.#board.getTaskDetail(taskId)
     } catch (error) {
-      this.#log('warn', `cannot read builder evidence for card ${taskId}: ${reasonFor(error)}`)
-      return []
+      throw contextualError('cannot read builder evidence', error)
     }
 
     const builderId = detail?.task?.assignee?.id

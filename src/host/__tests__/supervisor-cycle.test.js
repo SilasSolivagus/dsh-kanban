@@ -844,6 +844,47 @@ test('a reviewer prompt carries only non-empty builder evidence, newest first, c
   ])
 })
 
+test('a builder-evidence read failure blocks instead of prompting with no evidence', async (t) => {
+  const readFailure = failure('TASK_READ_FAILED', 'detail store unavailable')
+  const world = makeWorld(t, {
+    workers: [WORKER, REVIEWER],
+    failures: { getTaskDetail: readFailure },
+  })
+  const card = world.seed({ status: 'reviewing' })
+
+  const results = await world.makeSupervisor().runOnce()
+
+  // Fail closed: the reviewer is never asked to judge a card whose evidence
+  // could not be read, and no Done status is possible.
+  assert.equal(results[0].outcome, 'blocked')
+  assert.equal(world.calls.prompt.length, 0)
+  assert.equal(world.calls.updateStatus.length, 0)
+  assert.equal(world.tasks.get(card.id).status, 'reviewing')
+  assert.match(world.tasks.get(card.id).blockedReason, /builder evidence/)
+  assert.match(world.tasks.get(card.id).blockedReason, /detail store unavailable/)
+  assert.equal(world.calls.release.length, 1)
+  assert.equal(world.leases.active.size, 0)
+})
+
+test('a not-reviewable claim is skipped without prompting or blocking', async (t) => {
+  const world = makeWorld(t, {
+    workers: [WORKER, REVIEWER],
+    failures: {
+      claimReview: () => failure('TASK_NOT_REVIEWABLE', 'card changed before the review claim'),
+    },
+  })
+  const card = world.seed({ status: 'reviewing' })
+
+  const results = await world.makeSupervisor().runOnce()
+
+  assert.equal(results[0].outcome, 'skipped')
+  assert.equal(results[0].reason, 'not-reviewable')
+  assert.equal(world.calls.prompt.length, 0)
+  assert.equal(world.calls.block.length, 0)
+  assert.equal(world.calls.release.length, 0)
+  assert.equal(world.tasks.get(card.id).status, 'reviewing')
+})
+
 test('a rejected reviewing card is not re-prompted on the next cycle', async (t) => {
   const world = makeWorld(t, { workers: [WORKER, REVIEWER], reviewReply: rejectReply() })
   const card = world.seed({ status: 'reviewing' })
