@@ -5,6 +5,7 @@ import { createActorRegistry } from '../actors.js'
 import { AGENTS } from './actor-fixture.js'
 import { MemoryTable } from './memory-table.js'
 import { BoardPort, LocalBoardAdapter } from '../supervisor/board-port.js'
+import { Supervisor } from '../supervisor/supervisor.js'
 
 const REVIEWER = Object.freeze({
   type: 'agent',
@@ -79,6 +80,7 @@ test('BoardPort is an abstract interface', () => {
   for (const method of [
     'listAssigned',
     'getTask',
+    'getTaskDetail',
     'claim',
     'updateStatus',
     'comment',
@@ -143,6 +145,23 @@ test('getTask returns the stored card', async () => {
   assert.equal(fetched.title, 'Read me')
   assert.equal(fetched.version, task.version)
   assert.equal(fetched.assignee.id, 'builder')
+})
+
+test('getTaskDetail returns the full task detail with builder comments', async () => {
+  const { store, actors, board } = setup()
+  const task = await seedTask({ store, actors })
+  const builder = actors.get('builder')
+  await board.comment(task.id, 'pnpm test -> 302 passed', builder)
+
+  const detail = await board.getTaskDetail(task.id)
+
+  assert.equal(detail.task.id, task.id)
+  assert.equal(detail.task.assignee.id, 'builder')
+  assert.equal(detail.comments.length, 1)
+  assert.equal(detail.comments[0].body, 'pnpm test -> 302 passed')
+  assert.equal(detail.comments[0].author.id, 'builder')
+  assert.ok(Array.isArray(detail.attachments))
+  assert.ok(Array.isArray(detail.activity))
 })
 
 test('claim records lease metadata and moves the card to in_progress', async () => {
@@ -409,4 +428,42 @@ test('submitForReview propagates a version conflict', async () => {
   )
 
   assert.equal((await board.getTask(card.id)).status, 'reviewing')
+})
+
+test('the supervisor feeds real adapter builder comments into the review prompt', async () => {
+  const { store, actors, leases, board } = setup()
+  const card = await seedTask({ store, actors }, { status: 'reviewing' })
+  await board.comment(card.id, 'pnpm test -> 302 passed', actors.get('builder'))
+  await board.comment(card.id, 'Office note that is not builder evidence', actors.get('office'))
+
+  const prompts = []
+  const supervisor = new Supervisor({
+    board,
+    workers: [{ ...REVIEWER, role: 'reviewer', timeoutSeconds: 60 }],
+    leases,
+    sessions: {
+      async ensure() {},
+      async prompt(worker, text) {
+        prompts.push(text)
+        return {
+          text: JSON.stringify({
+            verdict: 'pass',
+            summary: 'Acceptance verified',
+            evidence: ['pnpm test -> 302 passed'],
+            notes: '',
+          }),
+          stopReason: 'completed',
+        }
+      },
+    },
+    readRolePrompt: () => 'Reviewer role rules:\n- Judge only against acceptance.',
+  })
+
+  await supervisor.runOnce()
+
+  assert.equal(prompts.length, 1)
+  assert.match(prompts[0], /pnpm test -> 302 passed/)
+  assert.equal(prompts[0].includes('Office note that is not builder evidence'), false)
+  assert.equal((await board.getTask(card.id)).status, 'done')
+  assert.equal(leases.active.size, 0)
 })

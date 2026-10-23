@@ -53,6 +53,7 @@ const BOARD_METHODS = Object.freeze([
   'listAssigned',
   'listReviewQueue',
   'getTask',
+  'getTaskDetail',
   'claim',
   'claimReview',
   'updateStatus',
@@ -600,7 +601,7 @@ export class Supervisor {
   async #builderEvidence(taskId) {
     let detail
     try {
-      detail = await this.#taskDetail(taskId)
+      detail = await this.#board.getTaskDetail(taskId)
     } catch (error) {
       this.#log('warn', `cannot read builder evidence for card ${taskId}: ${reasonFor(error)}`)
       return []
@@ -617,19 +618,6 @@ export class Supervisor {
     }
 
     return entries.slice(-MAX_BUILDER_EVIDENCE).reverse()
-  }
-
-  /**
-   * The board contract has no comment read yet (board-port.js is frozen for
-   * this task), so use a detail read when the adapter exposes one and fall back
-   * to comments carried on the task object.
-   */
-  async #taskDetail(taskId) {
-    if (typeof this.#board.getTaskDetail === 'function') {
-      return await this.#board.getTaskDetail(taskId)
-    }
-    const task = await this.#board.getTask(taskId)
-    return { task, comments: Array.isArray(task?.comments) ? task.comments : [] }
   }
 
   async #blocked(worker, task, actor, { result, error } = {}) {

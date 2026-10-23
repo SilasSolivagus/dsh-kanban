@@ -947,7 +947,7 @@ test('the supervisor rejects missing dependencies at construction time', () => {
     () => new Supervisor({ board: completeBoard(), workers: 'builder', leases: {}, sessions: {}, readRolePrompt: () => '' }),
     /workers/i,
   )
-  for (const method of ['listReviewQueue', 'claimReview']) {
+  for (const method of ['listReviewQueue', 'claimReview', 'getTaskDetail']) {
     const board = completeBoard()
     delete board[method]
     assert.throws(
@@ -992,6 +992,9 @@ function completeBoard() {
       return []
     },
     getTask() {
+      return null
+    },
+    getTaskDetail() {
       return null
     },
     claim() {},

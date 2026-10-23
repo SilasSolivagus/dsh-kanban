@@ -30,6 +30,10 @@ export class BoardPort {
     throw notImplemented('getTask')
   }
 
+  getTaskDetail(id) {
+    throw notImplemented('getTaskDetail')
+  }
+
   claim(id, actor, leaseSeconds) {
     throw notImplemented('claim')
   }
@@ -120,6 +124,10 @@ export class LocalBoardAdapter extends BoardPort {
 
   getTask(id) {
     return this.#store.getTaskDetail(id).task
+  }
+
+  getTaskDetail(id) {
+    return this.#store.getTaskDetail(id)
   }
 
   async claim(id, actor, leaseSeconds) {
