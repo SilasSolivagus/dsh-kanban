@@ -63,7 +63,7 @@ function RefreshIcon({ spinning }) {
   </svg>
 }
 
-export function App({ t }) {
+export function App({ t, onOpenOffice }) {
   const [projects, setProjects] = useState([])
   const [tasks, setTasks] = useState([])
   const [selectedProjectId, setSelectedProjectId] = useState(ALL_PROJECTS)
@@ -549,6 +549,12 @@ export function App({ t }) {
             aria-label={t('search')}
           />
         </div>
+        {onOpenOffice ? <button
+          type="button"
+          className="dkb-button dkb-office-button"
+          onClick={onOpenOffice}
+          title={t('officeHint')}
+        >{t('findOffice')}</button> : null}
         <FiltersMenu
           t={t}
           filters={filters}
@@ -606,9 +612,12 @@ export function App({ t }) {
         {!loading && !error && projects.length === 0 ? <div className="dkb-state">
           <p className="dkb-state-title">{t('noProjects')}</p>
           <p className="dkb-muted">{t('noProjectsHint')}</p>
-          <button type="button" className="dkb-button dkb-button-primary" onClick={() => openDialog({ type: 'create' })}>
-            {t('createProject')}
-          </button>
+          <div className="dkb-empty-actions">
+            <button type="button" className="dkb-button dkb-button-primary" onClick={() => openDialog({ type: 'create' })}>
+              {t('createProject')}
+            </button>
+            {onOpenOffice ? <button type="button" className="dkb-button" onClick={onOpenOffice}>{t('findOffice')}</button> : null}
+          </div>
         </div> : null}
         {projects.length > 0 ? <section className="dkb-board" aria-label={t('nav')}>
           <div className="dkb-board-head">
