@@ -5,8 +5,8 @@
 <h1 align="center">DSH Kanban</h1>
 
 <p align="center">
-  <strong>The native task board for DeepSeek Harness.</strong><br/>
-  Four columns. Durable persistence. No iframe.
+  <strong>A native board for DeepSeek Harness — and a supervisor that keeps persistent DSH workers on it.</strong><br/>
+  Human decisions. Agent work. Verifiable evidence.
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
   <a href="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml"><img src="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/version-2.0.0-2F6FB2?style=flat-square" alt="version 2.0.0" />
   <img src="https://img.shields.io/badge/DSH-0.2.1--rc.2-111827?style=flat-square" alt="DSH 0.2.1-rc.2" />
-  <img src="https://img.shields.io/badge/tests-121%20passing-2EA043?style=flat-square" alt="121 tests passing" />
+  <img src="https://img.shields.io/badge/tests-256%20passing-2EA043?style=flat-square" alt="256 tests passing" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA043?style=flat-square" alt="MIT license" /></a>
 </p>
 
@@ -30,46 +30,86 @@
   <sub>All projects view. Questions and blockers automatically collect in <b>Needs you</b>.</sub>
 </p>
 
-## Your agent needs a queue. You need a board.
+## The board is the shared state
 
-DSH Kanban is a **native Cordis plugin** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It registers a real page in the `main` slot and a real entry in `sidebar.panellist` — not a web app inside an iframe.
+DSH Kanban is a native Cordis plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). It is two things:
 
-Projects, tasks, comments, attachments and activity live in the Host's `storageDomain`. The browser is never the source of truth.
+1. **A real board** — projects, cards, comments, attachments, approvals, activity.
+2. **A supervisor** — wakes persistent DSH worker sessions, claims cards with a lease, enforces an evidence contract, and never writes Done without evidence.
 
-> **Chat manages sessions. Kanban manages tasks.**  
-> DSH Kanban gives agents a task layer that outlives the conversation.
+> **Chat manages sessions. Kanban manages work.**<br/>
+> Agent memory is a cache. The card is authoritative.
 
-The board is built for the loop between a human and an agent:
+The board is not an agent chat with columns attached. It is the place where work becomes a commitment:
 
-1. The agent creates work, records a blocker, or asks a question.
-2. The card moves to **Needs you** automatically.
-3. You answer in the card — approve, reject, unblock, comment.
-4. The task moves to **Done**, with the full activity trail.
-
-> One board. One data model. No second tab to keep in sync.
+```text
+intent → acceptance → owner → plan → progress → evidence → decision
+```
 
 ## ✨ What you get
 
+### Board
+
 | | |
 | --- | --- |
-| **Four-column board** | Backlog, Running, Needs you, Done. Drag to move, drag to reorder, collapse columns. |
-| **Needs you** | A derived column for unanswered questions, blockers and reviews. Precedence: question → blocker → review. |
-| **Approvals in the card** | Pick an option, add a note, approve or reject. Approval moves to Done; rejection returns to Backlog. |
-| **Native task drawer** | Status, priority, labels, description, blocker, links, request input, comments, attachments, activity. |
-| **Durable Host storage** | `storageDomain` records survive refresh and restart. Attachments use DSH attachment storage. |
-| **Archive and read-only** | Archive projects and tasks; restore them later. Archived projects open read-only with a restore banner. |
-| **Search and filters** | Search title, description, project and labels. Filter by project, priority, label or assignee. |
-| **DSH-native UI** | Theme tokens, `zh` / `en` locale, focus management, reduced-motion support. |
+| **Four-column board** | Backlog, Running, Needs you, Done. Drag to move and reorder. |
+| **Needs you** | Derived column for questions, blockers and reviews. Precedence: question → blocker → review. |
+| **Approvals in the card** | Pick an option, add a note, approve or reject. |
+| **Native task drawer** | Status, priority, labels, description, blocker, links, comments, attachments, activity. |
+| **Durable Host storage** | `storageDomain` records survive refresh and restart. |
+| **Archive and read-only** | Archive projects/tasks; restore later. |
+| **Search and filters** | Title, description, project, labels, priority, assignee. |
+| **DSH-native UI** | Theme tokens, `zh` / `en`, focus management, reduced motion. |
 
-## 🎬 See it in motion
+### Persistent DSH workers (P1 alpha)
 
-<p align="center">
-  <img src="docs/assets/kanban-demo.gif" alt="Opening a task, answering a question and moving it to Done" width="92%" />
-</p>
+| | |
+| --- | --- |
+| **Persistent sessions** | One DSH child per worker, resumed across supervisor restarts. Not a fresh subagent per card. |
+| **Actor identity** | Every write carries a real agent actor: `builder`, not `LOCAL_USER`. |
+| **Claim + lease** | One worker per card; lease TTL = worker timeout + 60s; expired leases can be reclaimed. |
+| **Evidence contract** | Worker returns `{outcome, summary, evidence, notes}`. Done requires at least one evidence string. |
+| **Blocked = Needs you** | Timeout, worker error, missing file, ambiguity, or invalid evidence becomes `blockedReason`, visible in **Needs you**. |
+| **Crash-safe** | SIGKILL and plugin reload preserve board, lease and session ids; the restarted supervisor does not duplicate the prompt. |
 
-<p align="center">
-  <sub>Open a card, answer the question in the drawer, approve it, and watch the card move to Done.</sub>
-</p>
+## 🧭 Architecture
+
+```mermaid
+flowchart LR
+  subgraph Web["DSH Web UI"]
+    ui["Board / Drawer / Dialogs"]
+  end
+
+  subgraph Host["DSH Host"]
+    api["/kanban-api"]
+    store["KanbanStore"]
+    sup["Supervisor"]
+    lease["LeaseStore"]
+    session["DshWorkerSession"]
+    domain[("storageDomain")]
+    files[("attachments")]
+  end
+
+  subgraph Worker["Persistent DSH child"]
+    bot["builder / 扳子"]
+  end
+
+  ui -->|"JSON + version"| api
+  api --> store
+  store --> domain
+  store --> files
+  sup -->|"claim / status / comment"| store
+  sup --> lease
+  sup --> session
+  session -->|"startActivation / prompt / interrupt"| bot
+  bot -->|"JSON evidence"| sup
+```
+
+- **Board** owns state. Every write is versioned; stale writes get `TASK_VERSION_CONFLICT` (409).
+- **Supervisor** polls assigned cards, claims a lease, wakes the persistent worker, and applies the result.
+- **Worker** does the work and returns evidence. It does not edit board state directly in P1.
+- **LeaseStore** persists claims in `~/.dsh/kanban-supervisor-state.json`.
+- **DshWorkerSession** persists parent/child ids in `~/.dsh/kanban-worker-sessions.json`.
 
 ## 🚀 Quick start
 
@@ -82,80 +122,141 @@ pnpm install
 pnpm check
 ```
 
-Then:
-
 1. Open **DSH → Settings → Plugins**.
-2. Choose **Install local bundle** and select this folder (the one with `package.json`).
+2. Choose **Install local bundle** and select this folder.
 3. Enable `@local/dsh-kanban`.
-4. Refresh DSH and click **Kanban** in the sidebar.
+4. Refresh DSH and open **Kanban**.
 
-The profile keeps a link to this folder, so updates are:
+The board works with no worker config. The supervisor only starts when a worker file exists.
 
-```bash
-git pull
-pnpm install
-pnpm check
+## 🤖 Enable a persistent worker
+
+### 1. Actor tokens
+
+Create `~/.dsh/kanban-agents.json` (mode `0600`). Tokens are local only.
+
+```json
+{
+  "agents": [
+    {
+      "id": "office",
+      "name": "Office",
+      "role": "office",
+      "projects": ["*"],
+      "scopes": ["board:read", "board:create", "board:assign", "board:update:any", "board:comment"],
+      "token": "replace-with-a-random-token"
+    },
+    {
+      "id": "builder",
+      "name": "Builder",
+      "role": "builder",
+      "projects": ["your-project-id"],
+      "scopes": ["board:read", "board:update:own", "board:comment"],
+      "token": "replace-with-a-random-token"
+    }
+  ]
+}
 ```
 
-Then disable/enable `@local/dsh-kanban` once and refresh.
+`docs/agents.example.json` shows the shape. Never commit real tokens.
 
-> `pnpm check` builds `index.js` / `client.js` and runs the full suite. Both generated bundles are committed, so a fresh install does not need a build step.
+### 2. Worker config
 
-## 🧭 How it works
+Create `~/.dsh/kanban-workers.json` (mode `0600`). The supervisor auto-starts when this file exists.
 
-```mermaid
-flowchart LR
-  subgraph Web["DSH Web UI"]
-    slot["main + sidebar slots"]
-    ui["Board / Drawer / Dialogs"]
-  end
-
-  subgraph Host["DSH Host"]
-    api["/kanban-api"]
-    store["KanbanStore"]
-    domain[("storageDomain")]
-    files[("attachments")]
-  end
-
-  slot --> ui
-  ui -->|"JSON + task version"| api
-  api --> store
-  store --> domain
-  store --> files
+```json
+{
+  "workers": [
+    {
+      "id": "builder",
+      "name": "Builder",
+      "role": "builder",
+      "cwd": "/absolute/path/to/builder-workspace",
+      "agentPreset": "standard",
+      "maxConcurrent": 1,
+      "timeoutSeconds": 300
+    }
+  ]
+}
 ```
 
-- **Client:** registers slots and locale, renders the board, drawer and dialogs, calls `/kanban-api`.
-- **Host:** owns the domain, routes, validation and optimistic concurrency. Every task write carries a `version`; stale writes get `TASK_VERSION_CONFLICT` (HTTP 409).
-- **Storage:** project/task/comment/activity records in `storageDomain`; attachment bytes through `ctx.attachments`; only column-collapse preferences use localStorage.
+- `cwd` must exist and be absolute.
+- `agentPreset` is required in practice; `standard` is the safe default.
+- One supervisor process only. One worker per role in P1.
+- Remove the file (or disable the plugin) to stop the supervisor.
 
-### Why native instead of an iframe
+### 3. Role prompts
 
-| | iframe board | DSH Kanban |
-| --- | --- | --- |
-| Theme and locale | drifts from the app | native tokens + locale |
-| Persistence | browser localStorage | Host `storageDomain` |
-| Attachments | awkward bridge | DSH attachment service |
-| Navigation | nested page | `main` + `sidebar.panellist` |
-| Approvals | separate workflow | real Needs you queue |
+The worker reads `docs/agents/<role>.md` as its role contract. Keep the JSON output contract intact:
 
-## 📸 Inside a task
+```json
+{
+  "outcome": "done | blocked",
+  "summary": "≤ 500 chars",
+  "evidence": ["real command output, file path, or link"],
+  "notes": "optional"
+}
+```
 
-<p align="center">
-  <img src="docs/assets/kanban-drawer.png" alt="Task drawer with properties, blocker, links, comments and attachments" width="100%" />
-</p>
+## 🔁 First card
 
-The drawer is the full record, not a read-only preview: edit properties, set or clear a blocker, request input, answer questions, add links, comments and attachments, and read the activity stream.
+```text
+Silas → Office → card assigned to builder
+  → supervisor claims a lease
+  → builder session receives the card
+  → builder returns JSON + evidence
+  → supervisor writes comment + Done
+  → Needs you only for blocked / review / decision
+```
+
+P1 live trial: **12 Done with evidence, 4 Needs you, 16 cards**, including:
+
+- content, file, command and review work
+- ambiguous request → blocked
+- missing file → blocked
+- done without evidence → blocked
+- expired lease → reclaimed live
+- real SIGKILL → app restarted, no duplicate prompt
+
+## 🛡️ Safety model
+
+- Tokens never enter cards, comments, prompts or Git.
+- Agent writes pass an actor; missing actor does not fall back silently in supervisor paths.
+- Workers cannot approve red decisions, delete/archive tasks, or manage projects.
+- Blocked cards stay `in_progress` with `blockedReason` and appear in **Needs you**.
+- The supervisor never marks Done without evidence.
+- Per-worker workspace and one hidden parent per worker.
+- P1 is local-only. It is not a sandbox between hostile users.
+
+## ⚠️ Current limits
+
+- Single supervisor, single builder; no multi-process coordination.
+- Mac/DSH must be running; no hosted board yet.
+- Worker tools depend on the DSH preset; `standard` is assumed.
+- Lease reclaim after a real crash is tested, but full 7-day soak is not.
+- No handoff to a reviewer worker yet.
+- No A2A, MCP, Grok adapter or hosted board yet.
+- `README.zh-CN.md` may lag English details.
 
 ## 🗺️ Roadmap
 
-- [x] **v2.0.0** — native DSH page, four-column board, approvals, comments, attachments, archive and read-only projects
-- [ ] Saved filter views
-- [ ] Keyboard-first command palette and quick add
-- [ ] Import / export (JSON and Markdown)
-- [ ] Real-time multi-user collaboration
-- [ ] Mobile-friendly layout
+- [x] **M1** — actor identity, tokens, project ACL, real activity
+- [x] **P1 alpha** — persistent DSH worker, supervisor, lease, evidence, blocked/reclaim
+- [ ] **P1.2** — 7-day soak, handoff, second worker (reviewer)
+- [ ] **P2** — second runtime adapter (HTTP / Grok) against the same worker contract
+- [ ] **P3** — hosted board: Postgres, TLS, auth, multi-user
+- [ ] **P4** — A2A adapter
 
-Planned, not promised. Open an issue if you want to shape the order.
+See [the product plan](docs/superpowers/plans/2026-10-23-agent-board-product.md) and [P1 plan](docs/superpowers/plans/2026-10-23-p1-persistent-dsh-bots.md).
+
+## 📚 Documentation
+
+- [Usage guide (English)](docs/usage.en.md)
+- [使用说明（中文）](docs/usage.md)
+- [P1 trial](docs/spikes/p1.1-ten-card-trial.md)
+- [Lease reclaim + crash probe](docs/spikes/p1.1-lease-and-crash.md)
+- [Real SIGKILL probe](docs/spikes/p1.1-kill9.md)
+- [Hosted board plan](docs/superpowers/plans/2026-10-23-hosted-kanban-a2a.md)
 
 ## 🛠️ Development
 
@@ -167,36 +268,27 @@ pnpm check      # build + test
 
 ```text
 src/
-  host/          # entry, domain, schema, store, HTTP routes
-  client/        # slots, app shell, board, cards, drawer, dialogs
-  shared/        # statuses, columns, attention rules
-scripts/build.mjs
-locale/          # plugin metadata (zh / en)
-docs/            # usage guide and screenshots
+  host/
+    supervisor/   # config, board port, lease, prompt, session, cycle
+    entry.js      # plugin wiring
+    http.js       # /kanban-api
+    store.js      # board persistence
+  client/         # board, cards, drawer, dialogs
+  shared/         # statuses, columns, attention rules
+docs/
+  agents/         # role contracts
+  spikes/         # live trial evidence
 ```
 
-- `index.js` is the Host bundle; runtime DSH packages are external.
-- `client.js` is the Client bundle wrapped for `window.__ModuleLoader__`.
-- Tests use Node's built-in test runner; no browser test dependency is required.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the PR checklist.
-
-## 📚 Documentation
-
-- [Usage guide (English)](docs/usage.en.md)
-- [使用说明（中文）](docs/usage.md)
-- [Design notes](docs/superpowers/specs/2026-10-21-dsh-kanban-design.md)
-- [Implementation plan](docs/superpowers/plans/2026-10-21-dsh-kanban.md)
+Tests use Node's built-in runner. No browser test dependency is required.
 
 ## 🤝 Contributing
 
-Join the conversation in [GitHub Discussions](https://github.com/SilasSolivagus/dsh-kanban/discussions).
+Issues and PRs are welcome.
 
-Issues and pull requests are welcome.
-
-- Found a bug? Open an issue with DSH version, OS and reproduction steps.
-- Built something useful? Send a focused PR with a test.
-- Like the direction? Star the repo — it helps other DSH users find it.
+- Bug? Include DSH version, OS and reproduction.
+- Feature? Keep the board contract and evidence rules intact.
+- New runtime? Implement the worker adapter, not a second board.
 
 ## 📄 License
 
@@ -204,4 +296,4 @@ Issues and pull requests are welcome.
 
 ## 🙏 Acknowledgements
 
-Built on DSH's native slot, locale, `storageDomain`, attachment and HTTP services. Thanks to the DeepSeek Harness team for making a plugin surface that is worth building on.
+Built on DSH's native slot, locale, `storageDomain`, attachment, HTTP and session services.
