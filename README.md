@@ -242,7 +242,8 @@ P1 live trial: **12 Done with evidence, 4 Needs you, 16 cards**, including:
 
 - [x] **M1** — actor identity, tokens, project ACL, real activity
 - [x] **P1 alpha** — persistent DSH worker, supervisor, lease, evidence, blocked/reclaim
-- [ ] **P1.2** — 7-day soak, handoff, second worker (reviewer)
+- [ ] **P1.2** — 7-day soak, Office entry, reviewer handoff
+- [ ] **P1.3** — cost-tiered office: expensive lead, cheap workers, review gate
 - [ ] **P2** — second runtime adapter (HTTP / Grok) against the same worker contract
 - [ ] **P3** — hosted board: Postgres, TLS, auth, multi-user
 - [ ] **P4** — A2A adapter

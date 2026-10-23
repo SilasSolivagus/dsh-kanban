@@ -211,7 +211,8 @@ P1 live trial：**12 Done 有 evidence，4 Needs you，16 张卡**，包括：
 
 - [x] M1：actor、token、项目 ACL、真实 activity
 - [x] P1 alpha：持久 worker、supervisor、lease、evidence、blocked/reclaim
-- [ ] P1.2：7 天、handoff、第二个 worker
+- [ ] P1.2：7 天、Office 入口、reviewer handoff
+- [ ] P1.3：贵主管 + 便宜工人 + review gate
 - [ ] P2：第二个 runtime adapter（HTTP / Grok）
 - [ ] P3：Hosted Board（Postgres、TLS、auth、多用户）
 - [ ] P4：A2A adapter
