@@ -2,7 +2,7 @@ import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } f
 import { PRIORITIES, STATUSES } from '../../shared/statuses.js'
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-const CREATE_STATUSES = STATUSES.filter((status) => status !== 'canceled')
+const CREATE_STATUSES = STATUSES.filter((status) => status !== 'canceled' && status !== 'reviewing')
 
 export function projectErrorText(error, t) {
   if (error?.code === 'PROJECT_NOT_EMPTY') {

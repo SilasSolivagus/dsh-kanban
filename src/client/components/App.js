@@ -237,7 +237,7 @@ export function App({ t }) {
     })
   }, [boardTasks, selectedProjectId, filters, search, projectNames])
 
-  const runningCount = visibleTasks.filter((task) => task.status === 'in_progress').length
+  const runningCount = visibleTasks.filter((task) => task.column === 'running').length
   const filterCount = activeFilterCount(filters)
 
   const openDialog = useCallback((dialog) => {

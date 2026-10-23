@@ -86,7 +86,7 @@ export function statusForColumn(columnId, currentStatus) {
     return currentStatus === 'backlog' || currentStatus === 'todo' ? currentStatus : 'backlog'
   }
   if (columnId === 'running') {
-    return currentStatus === 'in_progress' ? currentStatus : 'in_progress'
+    return currentStatus === 'in_progress' || currentStatus === 'reviewing' ? currentStatus : 'in_progress'
   }
   if (columnId === 'done') {
     return currentStatus === 'done' ? currentStatus : 'done'
