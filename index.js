@@ -22680,6 +22680,9 @@ function isPlainObject5(value) {
 function isNonEmptyString5(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
+function hasUnresolvedQuestion2(task) {
+  return Boolean(task?.pendingQuestion) && !task?.questionResolution;
+}
 function requireObject(value, name) {
   if (!isPlainObject5(value)) throw new TypeError(`Supervisor requires a ${name} object`);
   return value;
@@ -22874,7 +22877,7 @@ var Supervisor = class {
     if (isTerminalStatus(task.status)) {
       return this.#report(worker, taskId, "skipped", { reason: "terminal" });
     }
-    if (task.blockedReason || task.pendingQuestion) {
+    if (task.blockedReason || hasUnresolvedQuestion2(task)) {
       return this.#report(worker, taskId, "skipped", { reason: "attention" });
     }
     let activeLease;
@@ -22980,7 +22983,7 @@ var Supervisor = class {
       if (!isNonEmptyString5(taskId) || submitted.has(taskId) || seen.has(taskId)) continue;
       seen.add(taskId);
       if (isTerminalStatus(listed.status)) continue;
-      if (listed.blockedReason || listed.pendingQuestion) {
+      if (listed.blockedReason || hasUnresolvedQuestion2(listed)) {
         results.push(this.#report(reviewer, taskId, "skipped", { reason: "attention" }));
         continue;
       }

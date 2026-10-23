@@ -467,3 +467,62 @@ test('the supervisor feeds real adapter builder comments into the review prompt'
   assert.equal((await board.getTask(card.id)).status, 'done')
   assert.equal(leases.active.size, 0)
 })
+
+test('answering a reviewing card question still reaches the reviewer, never Done directly', async () => {
+  const { store, actors, leases, board } = setup()
+  const card = await seedTask({ store, actors }, { status: 'reviewing' })
+  await board.comment(card.id, 'pnpm test -> 302 passed', actors.get('builder'))
+
+  const asked = await store.askQuestion(card.id, {
+    version: card.version,
+    prompt: 'Which output should the gate accept?',
+    note: '',
+    options: [
+      { id: 'a', label: 'P12_OK', detail: '' },
+      { id: 'b', label: 'P12_BAD', detail: '' },
+    ],
+  })
+  const answered = await store.answerQuestion(card.id, {
+    version: asked.version,
+    decision: 'approve',
+    selected: 'a',
+    note: 'accept P12_OK',
+  })
+
+  // The human answer resolves the question but must not write Done, and the
+  // answered question must not hide the card from the reviewer pass.
+  assert.equal(answered.status, 'reviewing')
+  assert.equal(answered.column, 'running')
+  assert.equal(answered.attentionReason, null)
+  assert.equal(answered.pendingQuestion.prompt, 'Which output should the gate accept?')
+  assert.equal(answered.questionResolution.decision, 'approve')
+
+  const prompts = []
+  const supervisor = new Supervisor({
+    board,
+    workers: [{ ...REVIEWER, role: 'reviewer', timeoutSeconds: 60 }],
+    leases,
+    sessions: {
+      async ensure() {},
+      async prompt(worker, text) {
+        prompts.push(text)
+        return {
+          text: JSON.stringify({
+            verdict: 'pass',
+            summary: 'Acceptance verified',
+            evidence: ['pnpm test -> 302 passed'],
+            notes: '',
+          }),
+          stopReason: 'completed',
+        }
+      },
+    },
+    readRolePrompt: () => 'Reviewer role rules:\n- Judge only against acceptance.',
+  })
+
+  await supervisor.runOnce()
+
+  assert.equal(prompts.length, 1)
+  assert.equal((await board.getTask(card.id)).status, 'done')
+  assert.equal(leases.active.size, 0)
+})

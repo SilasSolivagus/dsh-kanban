@@ -75,6 +75,15 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+/**
+ * A question blocks a card only until it is answered. The store keeps
+ * `pendingQuestion` for history after answering, so checking the field alone
+ * would strand a resolved card outside both supervisor passes.
+ */
+function hasUnresolvedQuestion(task) {
+  return Boolean(task?.pendingQuestion) && !task?.questionResolution
+}
+
 function requireObject(value, name) {
   if (!isPlainObject(value)) throw new TypeError(`Supervisor requires a ${name} object`)
   return value
@@ -308,7 +317,7 @@ export class Supervisor {
     if (isTerminalStatus(task.status)) {
       return this.#report(worker, taskId, 'skipped', { reason: 'terminal' })
     }
-    if (task.blockedReason || task.pendingQuestion) {
+    if (task.blockedReason || hasUnresolvedQuestion(task)) {
       return this.#report(worker, taskId, 'skipped', { reason: 'attention' })
     }
 
@@ -442,8 +451,10 @@ export class Supervisor {
       seen.add(taskId)
       if (isTerminalStatus(listed.status)) continue
       // A rejected or self-review-blocked card stays reviewing with a
-      // blockedReason. It is waiting for a human, so never prompt again.
-      if (listed.blockedReason || listed.pendingQuestion) {
+      // blockedReason, and an unresolved question waits for a human. Neither
+      // is re-prompted; an answered question is history and must not hide the
+      // card from the reviewer.
+      if (listed.blockedReason || hasUnresolvedQuestion(listed)) {
         results.push(this.#report(reviewer, taskId, 'skipped', { reason: 'attention' }))
         continue
       }

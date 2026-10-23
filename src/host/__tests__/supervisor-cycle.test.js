@@ -85,6 +85,31 @@ const REVIEWER_ACTOR = Object.freeze({
 })
 
 /**
+ * The store keeps an answered question on the card for history: a resolved
+ * `questionResolution` plus the original `pendingQuestion`. A supervisor must
+ * treat that as history, not as pending attention.
+ */
+function answeredQuestion() {
+  const at = '2026-10-23T00:00:00.000Z'
+  return {
+    pendingQuestion: {
+      prompt: 'Which output?',
+      note: '',
+      options: [{ id: 'a', label: 'A', detail: '' }],
+      selected: null,
+      createdAt: at,
+    },
+    questionResolution: {
+      decision: 'approve',
+      optionId: 'a',
+      optionLabel: 'A',
+      note: 'use A',
+      at,
+    },
+  }
+}
+
+/**
  * One in-memory world behind every supervisor dependency. The lease map is
  * shared by the board fake and the lease fake, so a second Supervisor instance
  * sees the same "durable" lease state. That is how the restart test simulates a
@@ -584,6 +609,49 @@ test('a blocked in_progress card is never re-prompted', async (t) => {
   assert.equal(world.calls.claim.length, 0)
   assert.equal(world.calls.prompt.length, 0)
   assert.equal(world.tasks.get(card.id).blockedReason, 'Need input')
+})
+
+test('an unresolved question still skips the builder card', async (t) => {
+  const world = makeWorld(t)
+  const { pendingQuestion } = answeredQuestion()
+  const card = world.seed({ status: 'in_progress', pendingQuestion })
+
+  const results = await world.makeSupervisor().runOnce()
+
+  assert.equal(results[0].outcome, 'skipped')
+  assert.equal(results[0].reason, 'attention')
+  assert.equal(world.calls.claim.length, 0)
+  assert.equal(world.calls.prompt.length, 0)
+  assert.equal(world.tasks.get(card.id).status, 'in_progress')
+})
+
+test('a builder card with a resolved question is processed, not skipped as attention', async (t) => {
+  const world = makeWorld(t)
+  const card = world.seed({ status: 'in_progress', ...answeredQuestion() })
+
+  const results = await world.makeSupervisor().runOnce()
+
+  assert.equal(results[0].outcome, 'done')
+  assert.equal(world.calls.claim.length, 1)
+  assert.equal(world.calls.prompt.length, 1)
+  assert.equal(world.tasks.get(card.id).status, 'done')
+})
+
+test('a reviewing card with a resolved question is still reviewed', async (t) => {
+  const world = makeWorld(t, { workers: [WORKER, REVIEWER] })
+  const card = world.seed({ status: 'reviewing', ...answeredQuestion() })
+
+  const results = await world.makeSupervisor().runOnce()
+
+  // The answered question must not hide the card from the reviewer pass, and
+  // Done still comes from the reviewer, never from the human answer.
+  assert.equal(results[0].outcome, 'done')
+  assert.equal(world.calls.prompt.length, 1)
+  assert.equal(world.calls.prompt[0].worker.role, 'reviewer')
+  assert.equal(world.calls.claimReview.length, 1)
+  assert.equal(world.calls.updateStatus.at(-1).status, 'done')
+  assert.equal(world.calls.updateStatus.at(-1).actor.id, 'reviewer')
+  assert.equal(world.tasks.get(card.id).status, 'done')
 })
 
 test('an active lease is skipped after a restart, with no duplicate prompt', async (t) => {
