@@ -21812,7 +21812,7 @@ var DshWorkerSession = class {
           mode: "continuable",
           delivery: "queue",
           content: [{ type: "text", text }]
-        })),
+        }, AbortSignal.timeout(ACCEPT_TIMEOUT_MS))),
         ACCEPT_TIMEOUT_MS,
         "worker prompt acceptance",
         { childId, parentId }
@@ -21997,7 +21997,8 @@ var DshWorkerSession = class {
         Promise.resolve(agentLoop.createAgent(ctx, {
           sessionId: randomUUID(),
           meta: { cwd: this.#resolveCwd(worker), isSeeded: false },
-          ...agentOptions === void 0 ? {} : { agentOptions }
+          ...agentOptions === void 0 ? {} : { agentOptions },
+          signal: AbortSignal.timeout(ACCEPT_TIMEOUT_MS)
         })),
         ACCEPT_TIMEOUT_MS,
         "hidden parent creation"
@@ -22029,6 +22030,7 @@ var DshWorkerSession = class {
             prompt: [{ type: "text", text: BOOTSTRAP_PROMPT }],
             cwd: this.#resolveCwd(worker)
           },
+          signal: AbortSignal.timeout(ACCEPT_TIMEOUT_MS),
           delivery: "caller"
         })),
         ACCEPT_TIMEOUT_MS,
