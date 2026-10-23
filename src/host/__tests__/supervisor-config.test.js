@@ -232,8 +232,31 @@ test('workerByRole returns null when no worker has the role', () => {
 test('the example config documents the expected shape', () => {
   const example = JSON.parse(readFileSync(EXAMPLE_FILE, 'utf8'))
   assert.deepEqual(Object.keys(example), ['workers'])
-  assert.deepEqual(
-    Object.keys(example.workers[0]).sort(),
-    ['agentPreset', 'cwd', 'id', 'maxConcurrent', 'name', 'role', 'timeoutSeconds'],
-  )
+  assert.deepEqual(example.workers.map((worker) => worker.role), ['builder', 'reviewer'])
+  for (const worker of example.workers) {
+    assert.deepEqual(
+      Object.keys(worker).sort(),
+      ['agentPreset', 'cwd', 'id', 'maxConcurrent', 'name', 'role', 'timeoutSeconds'],
+    )
+  }
+  const reviewer = example.workers.find((worker) => worker.role === 'reviewer')
+  assert.equal(reviewer.maxConcurrent, 1)
+  assert.equal(reviewer.timeoutSeconds, 300)
+})
+
+test('the reviewer prompt states the review contract', () => {
+  const prompt = readFileSync(join(DEFAULT_PROMPT_DIR, 'reviewer.md'), 'utf8')
+  assert.ok(prompt.includes('{"verdict":"pass|reject","summary":"...","evidence":["..."],"notes":"..."}'))
+  assert.match(prompt, /一次只评审/)
+  assert.match(prompt, /builder 的 evidence/)
+  assert.match(prompt, /不重写/)
+  assert.match(prompt, /只判断/)
+  assert.match(prompt, /`pass` 必须有 evidence/)
+  assert.match(prompt, /`reject` 必须指出未通过的验收点/)
+  assert.match(prompt, /不评审自己/)
+  assert.match(prompt, /只输出这个 JSON 对象/)
+  assert.match(prompt, /可读的绝对路径/)
+  assert.match(prompt, /只在自己的 `cwd` 里读写/)
+  assert.match(prompt, /不进入别人的 worktree/)
+  assert.match(prompt, /token/)
 })
