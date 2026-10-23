@@ -10,7 +10,7 @@ export function columnForTask(task) {
   const attention = attentionReason(task)
   if (attention) return 'needs'
   if (task.status === 'backlog' || task.status === 'todo') return 'backlog'
-  if (task.status === 'in_progress') return 'running'
+  if (task.status === 'in_progress' || task.status === 'reviewing') return 'running'
   if (task.status === 'done') return 'done'
   return null
 }
