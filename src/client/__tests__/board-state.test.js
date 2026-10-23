@@ -85,6 +85,10 @@ test('statusForColumn maps columns and preserves a same-column status', () => {
   })
 })
 
+test('same-column reorder keeps a reviewing card in reviewing', () => {
+  assert.equal(statusForColumn('running', 'reviewing'), 'reviewing')
+})
+
 test('collapsed column state round-trips through localStorage JSON', () => {
   const collapsed = { backlog: true, needs: true }
   const raw = serializeCollapsedColumns(collapsed)

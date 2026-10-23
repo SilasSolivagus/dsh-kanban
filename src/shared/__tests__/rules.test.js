@@ -7,6 +7,7 @@ import {
   elapsedStart,
   nextIdentifier,
 } from '../rules.js'
+import { STATUS_LABELS } from '../statuses.js'
 
 const base = {
   id: 't1',
@@ -64,6 +65,13 @@ test('attention tasks cannot leave Needs you and Needs you cannot be a target', 
   assert.equal(canDrop(attention, 'done').ok, false)
   assert.equal(canDrop(base, 'needs').ok, false)
   assert.equal(canDrop(base, 'done').ok, true)
+})
+
+test('reviewing is a running state, not a human attention state', () => {
+  const task = { ...base, status: 'reviewing' }
+  assert.equal(attentionReason(task), null)
+  assert.equal(columnForTask(task), 'running')
+  assert.equal(STATUS_LABELS.reviewing, '评审中')
 })
 
 test('identifier uses the higher of nextTaskNumber and existing max', () => {

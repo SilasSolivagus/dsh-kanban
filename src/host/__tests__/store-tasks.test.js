@@ -57,6 +57,15 @@ test('patch increments version and rejects stale versions', async () => {
   )
 })
 
+test('updateTask accepts reviewing and maps it to the running column', async () => {
+  const store = makeStore()
+  const project = await store.createProject({ name: 'DSH 看板' })
+  const task = await store.createTask({ projectId: project.id, title: 'first' })
+  const updated = await store.updateTask(task.id, { version: 1, status: 'reviewing' })
+  assert.equal(updated.status, 'reviewing')
+  assert.equal(store.getTaskDetail(task.id).task.column, 'running')
+})
+
 test('archive hides from bootstrap and restore returns it', async () => {
   const store = makeStore()
   const project = await store.createProject({ name: 'DSH 看板' })

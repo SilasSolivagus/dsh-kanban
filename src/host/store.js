@@ -582,10 +582,18 @@ export class KanbanStore {
         throw Object.assign(new Error('Resolve attention before Done'), { code: 'TASK_NEEDS_ATTENTION' })
       }
       const now = this.#now()
+      // A reviewing card belongs to the reviewer gate. Answering its question
+      // records the human resolution, but must never write Done (or pull the
+      // card back to backlog): the reviewer pass is still the only path to
+      // Done. in_review and other statuses keep their existing transitions.
+      const reviewing = task.status === 'reviewing'
+      const nextStatus = reviewing
+        ? 'reviewing'
+        : cleanDecision === 'approve' ? 'done' : 'backlog'
       const next = {
         ...task,
-        status: cleanDecision === 'approve' ? 'done' : 'backlog',
-        statusSince: now,
+        status: nextStatus,
+        statusSince: nextStatus === task.status ? task.statusSince : now,
         questionResolution: {
           decision: cleanDecision,
           optionId: option?.id ?? null,

@@ -5,16 +5,28 @@ import { createActorRegistry } from '../actors.js'
 import { AGENTS } from './actor-fixture.js'
 import { MemoryTable } from './memory-table.js'
 import { BoardPort, LocalBoardAdapter } from '../supervisor/board-port.js'
+import { Supervisor } from '../supervisor/supervisor.js'
 
-// The real lease store lands in Task 3. This fake only provides the facade
-// contract the adapter relies on: claim(taskId, actor, leaseSeconds) and
-// release(taskId, actor), with lease metadata kept in a small "state" map.
+const REVIEWER = Object.freeze({
+  type: 'agent',
+  id: 'reviewer',
+  name: 'Reviewer',
+  avatarUrl: null,
+})
+
+// The adapter depends on a narrow lease facade: claim(taskId, actor,
+// leaseSeconds) and release(taskId, actor), with lease metadata kept in a small
+// "state" map. getActive() is exposed so tests can inspect the held lease,
+// mirroring the real lease store's read method.
 function makeLeases() {
   const active = new Map()
   const calls = []
   return {
     active,
     calls,
+    getActive(taskId) {
+      return active.get(taskId) ?? null
+    },
     async claim(taskId, actor, leaseSeconds) {
       calls.push({ op: 'claim', taskId, actor, leaseSeconds })
       if (active.has(taskId)) {
@@ -65,7 +77,19 @@ async function seedTask({ store, actors }, overrides = {}) {
 
 test('BoardPort is an abstract interface', () => {
   const port = new BoardPort()
-  for (const method of ['listAssigned', 'getTask', 'claim', 'updateStatus', 'comment', 'release']) {
+  for (const method of [
+    'listAssigned',
+    'getTask',
+    'getTaskDetail',
+    'claim',
+    'updateStatus',
+    'comment',
+    'block',
+    'release',
+    'listReviewQueue',
+    'claimReview',
+    'submitForReview',
+  ]) {
     assert.throws(
       () => port[method](),
       (error) => error.code === 'BOARD_NOT_IMPLEMENTED' && error.details.method === method,
@@ -121,6 +145,23 @@ test('getTask returns the stored card', async () => {
   assert.equal(fetched.title, 'Read me')
   assert.equal(fetched.version, task.version)
   assert.equal(fetched.assignee.id, 'builder')
+})
+
+test('getTaskDetail returns the full task detail with builder comments', async () => {
+  const { store, actors, board } = setup()
+  const task = await seedTask({ store, actors })
+  const builder = actors.get('builder')
+  await board.comment(task.id, 'pnpm test -> 302 passed', builder)
+
+  const detail = await board.getTaskDetail(task.id)
+
+  assert.equal(detail.task.id, task.id)
+  assert.equal(detail.task.assignee.id, 'builder')
+  assert.equal(detail.comments.length, 1)
+  assert.equal(detail.comments[0].body, 'pnpm test -> 302 passed')
+  assert.equal(detail.comments[0].author.id, 'builder')
+  assert.ok(Array.isArray(detail.attachments))
+  assert.ok(Array.isArray(detail.activity))
 })
 
 test('claim records lease metadata and moves the card to in_progress', async () => {
@@ -247,4 +288,241 @@ test('release clears the lease without regressing the card status', async () => 
   const detail = store.getTaskDetail(task.id).task
   assert.equal(detail.status, 'in_progress')
   assert.equal(detail.version, claimed.version)
+})
+
+test('lists only reviewing cards in the review queue', async () => {
+  const { store, actors, board } = setup()
+  const reviewing = await seedTask({ store, actors }, { status: 'reviewing' })
+  await seedTask({ store, actors }, { status: 'in_progress' })
+
+  const queue = await board.listReviewQueue('reviewer')
+
+  assert.equal(queue.length, 1)
+  assert.equal(queue[0].id, reviewing.id)
+  assert.equal(queue[0].status, 'reviewing')
+})
+
+test('listReviewQueue hides archived cards and cards in archived projects', async () => {
+  const { store, actors, board } = setup()
+  // store.bootstrap() already drops archived tasks; this test covers both the
+  // adapter's belt-and-braces guard and the archived-project filter.
+  const live = await seedTask({ store, actors }, { status: 'reviewing' })
+
+  const archivedCard = await seedTask({ store, actors }, { status: 'reviewing' })
+  await store.archiveTask(archivedCard.id, { version: archivedCard.version })
+
+  const archivedProject = await store.createProject({ name: 'Old board' })
+  await store.createTask({
+    projectId: archivedProject.id,
+    title: 'hidden',
+    status: 'reviewing',
+    assigneeId: 'builder',
+  }, actors.get('office'))
+  await store.archiveProject(archivedProject.id)
+
+  const queue = await board.listReviewQueue('reviewer')
+
+  assert.deepEqual(queue.map((task) => task.id), [live.id])
+})
+
+test('claimReview leases without changing the reviewing status', async () => {
+  const { store, actors, leases, board } = setup()
+  const card = await seedTask({ store, actors }, { status: 'reviewing' })
+
+  const claimed = await board.claimReview(card.id, REVIEWER, 60)
+
+  assert.equal(claimed.status, 'reviewing')
+  assert.equal(claimed.version, card.version)
+  assert.deepEqual(leases.calls[0], { op: 'claim', taskId: card.id, actor: REVIEWER, leaseSeconds: 60 })
+  assert.equal(leases.getActive(card.id).actorId, REVIEWER.id)
+  assert.equal(leases.getActive(card.id).leaseSeconds, 60)
+
+  const stored = store.getTaskDetail(card.id).task
+  assert.equal(stored.status, 'reviewing')
+  assert.equal(stored.version, card.version)
+})
+
+for (const status of ['done', 'canceled', 'in_progress', 'todo']) {
+  test(`claimReview rejects a ${status} card without taking a lease`, async () => {
+    const { store, actors, leases, board } = setup()
+    const card = await seedTask({ store, actors }, { status })
+
+    await assert.rejects(
+      () => board.claimReview(card.id, REVIEWER, 60),
+      (error) =>
+        error.code === 'TASK_NOT_REVIEWABLE' &&
+        error.details.taskId === card.id &&
+        error.details.status === status,
+    )
+
+    assert.equal(leases.getActive(card.id), null)
+    assert.deepEqual(leases.calls, [])
+  })
+}
+
+test('claimReview rejects an archived card without taking a lease', async () => {
+  const { store, actors, leases, board } = setup()
+  const card = await seedTask({ store, actors }, { status: 'reviewing' })
+  await store.archiveTask(card.id, { version: card.version })
+
+  await assert.rejects(
+    () => board.claimReview(card.id, REVIEWER, 60),
+    (error) =>
+      error.code === 'TASK_NOT_REVIEWABLE' &&
+      error.details.taskId === card.id &&
+      error.details.status === 'reviewing',
+  )
+
+  assert.equal(leases.getActive(card.id), null)
+  assert.deepEqual(leases.calls, [])
+})
+
+test('claimReview rejects a card in an archived project without taking a lease', async () => {
+  const { store, actors, leases, board } = setup()
+  const project = await store.createProject({ name: 'Old board' })
+  const card = await store.createTask({
+    projectId: project.id,
+    title: 'card',
+    status: 'reviewing',
+    assigneeId: 'builder',
+  }, actors.get('office'))
+  await store.archiveProject(project.id)
+
+  await assert.rejects(
+    () => board.claimReview(card.id, REVIEWER, 60),
+    (error) =>
+      error.code === 'TASK_NOT_REVIEWABLE' &&
+      error.details.taskId === card.id &&
+      error.details.status === 'reviewing',
+  )
+
+  assert.equal(leases.getActive(card.id), null)
+  assert.deepEqual(leases.calls, [])
+})
+
+test('submitForReview writes the reviewing status with the actor', async () => {
+  const { store, actors, board } = setup()
+  const card = await seedTask({ store, actors }, { status: 'in_progress' })
+  const builder = actors.get('builder')
+
+  const updated = await board.submitForReview(card.id, card.version, builder)
+
+  assert.equal(updated.status, 'reviewing')
+  assert.equal(updated.version, card.version + 1)
+  const detail = store.getTaskDetail(card.id)
+  assert.equal(detail.task.status, 'reviewing')
+  const activity = detail.activity.at(-1)
+  assert.equal(activity.actor.id, 'builder')
+  assert.deepEqual(activity.changes, [{ field: 'status', before: 'in_progress', after: 'reviewing' }])
+})
+
+test('submitForReview propagates a version conflict', async () => {
+  const { store, actors, board } = setup()
+  const card = await seedTask({ store, actors }, { status: 'in_progress' })
+  const builder = actors.get('builder')
+  await board.submitForReview(card.id, card.version, builder)
+
+  await assert.rejects(
+    () => board.submitForReview(card.id, card.version, builder),
+    (error) => error.code === 'TASK_VERSION_CONFLICT',
+  )
+
+  assert.equal((await board.getTask(card.id)).status, 'reviewing')
+})
+
+test('the supervisor feeds real adapter builder comments into the review prompt', async () => {
+  const { store, actors, leases, board } = setup()
+  const card = await seedTask({ store, actors }, { status: 'reviewing' })
+  await board.comment(card.id, 'pnpm test -> 302 passed', actors.get('builder'))
+  await board.comment(card.id, 'Office note that is not builder evidence', actors.get('office'))
+
+  const prompts = []
+  const supervisor = new Supervisor({
+    board,
+    workers: [{ ...REVIEWER, role: 'reviewer', timeoutSeconds: 60 }],
+    leases,
+    sessions: {
+      async ensure() {},
+      async prompt(worker, text) {
+        prompts.push(text)
+        return {
+          text: JSON.stringify({
+            verdict: 'pass',
+            summary: 'Acceptance verified',
+            evidence: ['pnpm test -> 302 passed'],
+            notes: '',
+          }),
+          stopReason: 'completed',
+        }
+      },
+    },
+    readRolePrompt: () => 'Reviewer role rules:\n- Judge only against acceptance.',
+  })
+
+  await supervisor.runOnce()
+
+  assert.equal(prompts.length, 1)
+  assert.match(prompts[0], /pnpm test -> 302 passed/)
+  assert.equal(prompts[0].includes('Office note that is not builder evidence'), false)
+  assert.equal((await board.getTask(card.id)).status, 'done')
+  assert.equal(leases.active.size, 0)
+})
+
+test('answering a reviewing card question still reaches the reviewer, never Done directly', async () => {
+  const { store, actors, leases, board } = setup()
+  const card = await seedTask({ store, actors }, { status: 'reviewing' })
+  await board.comment(card.id, 'pnpm test -> 302 passed', actors.get('builder'))
+
+  const asked = await store.askQuestion(card.id, {
+    version: card.version,
+    prompt: 'Which output should the gate accept?',
+    note: '',
+    options: [
+      { id: 'a', label: 'P12_OK', detail: '' },
+      { id: 'b', label: 'P12_BAD', detail: '' },
+    ],
+  })
+  const answered = await store.answerQuestion(card.id, {
+    version: asked.version,
+    decision: 'approve',
+    selected: 'a',
+    note: 'accept P12_OK',
+  })
+
+  // The human answer resolves the question but must not write Done, and the
+  // answered question must not hide the card from the reviewer pass.
+  assert.equal(answered.status, 'reviewing')
+  assert.equal(answered.column, 'running')
+  assert.equal(answered.attentionReason, null)
+  assert.equal(answered.pendingQuestion.prompt, 'Which output should the gate accept?')
+  assert.equal(answered.questionResolution.decision, 'approve')
+
+  const prompts = []
+  const supervisor = new Supervisor({
+    board,
+    workers: [{ ...REVIEWER, role: 'reviewer', timeoutSeconds: 60 }],
+    leases,
+    sessions: {
+      async ensure() {},
+      async prompt(worker, text) {
+        prompts.push(text)
+        return {
+          text: JSON.stringify({
+            verdict: 'pass',
+            summary: 'Acceptance verified',
+            evidence: ['pnpm test -> 302 passed'],
+            notes: '',
+          }),
+          stopReason: 'completed',
+        }
+      },
+    },
+    readRolePrompt: () => 'Reviewer role rules:\n- Judge only against acceptance.',
+  })
+
+  await supervisor.runOnce()
+
+  assert.equal(prompts.length, 1)
+  assert.equal((await board.getTask(card.id)).status, 'done')
+  assert.equal(leases.active.size, 0)
 })

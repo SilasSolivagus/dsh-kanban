@@ -85,6 +85,14 @@ test('accepts the office role', () => {
   })
 })
 
+test('accepts one reviewer worker', () => {
+  withWorkers([builder({ id: 'reviewer', name: 'Reviewer', role: 'reviewer' })], (file) => {
+    const { workers } = loadWorkers(file)
+    assert.equal(workers[0].role, 'reviewer')
+    assert.match(workers[0].promptFile, /reviewer\.md$/)
+  })
+})
+
 test('accepts an empty worker list', () => {
   withWorkers([], (file) => {
     assert.deepEqual(loadWorkers(file).workers, [])
@@ -93,10 +101,14 @@ test('accepts an empty worker list', () => {
 
 test('the committed example config is valid', () => {
   const { workers } = loadWorkers(EXAMPLE_FILE)
-  assert.equal(workers.length, 1)
+  assert.equal(workers.length, 2)
   assert.equal(workers[0].id, 'builder')
   assert.equal(workers[0].name, 'Builder')
   assert.equal(workers[0].role, 'builder')
+  assert.equal(workers[1].id, 'reviewer')
+  assert.equal(workers[1].name, 'Reviewer')
+  assert.equal(workers[1].role, 'reviewer')
+  assert.match(workers[1].promptFile, /reviewer\.md$/)
 })
 
 for (const field of ['id', 'name', 'role', 'cwd', 'maxConcurrent', 'timeoutSeconds']) {
@@ -220,8 +232,31 @@ test('workerByRole returns null when no worker has the role', () => {
 test('the example config documents the expected shape', () => {
   const example = JSON.parse(readFileSync(EXAMPLE_FILE, 'utf8'))
   assert.deepEqual(Object.keys(example), ['workers'])
-  assert.deepEqual(
-    Object.keys(example.workers[0]).sort(),
-    ['agentPreset', 'cwd', 'id', 'maxConcurrent', 'name', 'role', 'timeoutSeconds'],
-  )
+  assert.deepEqual(example.workers.map((worker) => worker.role), ['builder', 'reviewer'])
+  for (const worker of example.workers) {
+    assert.deepEqual(
+      Object.keys(worker).sort(),
+      ['agentPreset', 'cwd', 'id', 'maxConcurrent', 'name', 'role', 'timeoutSeconds'],
+    )
+  }
+  const reviewer = example.workers.find((worker) => worker.role === 'reviewer')
+  assert.equal(reviewer.maxConcurrent, 1)
+  assert.equal(reviewer.timeoutSeconds, 300)
+})
+
+test('the reviewer prompt states the review contract', () => {
+  const prompt = readFileSync(join(DEFAULT_PROMPT_DIR, 'reviewer.md'), 'utf8')
+  assert.ok(prompt.includes('{"verdict":"pass|reject","summary":"...","evidence":["..."],"notes":"..."}'))
+  assert.match(prompt, /一次只评审/)
+  assert.match(prompt, /builder 的 evidence/)
+  assert.match(prompt, /不重写/)
+  assert.match(prompt, /只判断/)
+  assert.match(prompt, /`pass` 必须有 evidence/)
+  assert.match(prompt, /`reject` 必须指出未通过的验收点/)
+  assert.match(prompt, /不评审自己/)
+  assert.match(prompt, /只输出这个 JSON 对象/)
+  assert.match(prompt, /可读的绝对路径/)
+  assert.match(prompt, /只在自己的 `cwd` 里读写/)
+  assert.match(prompt, /不进入别人的 worktree/)
+  assert.match(prompt, /token/)
 })

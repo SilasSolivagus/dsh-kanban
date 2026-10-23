@@ -166,6 +166,59 @@ test('answerQuestion reject returns to backlog and records the resolution', asyn
   assert.equal(rejected.questionResolution.optionLabel, 'A')
 })
 
+test('answerQuestion on a reviewing card records approve but stays reviewing', async () => {
+  const { store, task } = await setup()
+  const reviewing = await store.updateTask(task.id, { version: 1, status: 'reviewing' })
+  const asked = await store.askQuestion(task.id, questionInput({ version: reviewing.version }))
+  assert.equal(asked.column, 'needs')
+
+  const approved = await store.answerQuestion(task.id, {
+    version: asked.version,
+    decision: 'approve',
+    selected: 'a',
+    note: 'ship it',
+  })
+
+  // The reviewer gate, not the human answer, is the only path to Done.
+  assert.equal(approved.status, 'reviewing')
+  assert.equal(approved.column, 'running')
+  assert.equal(approved.attentionReason, null)
+  assert.equal(approved.statusSince, reviewing.statusSince)
+  assert.equal(approved.pendingQuestion.prompt, 'Which name?')
+  assert.deepEqual(approved.questionResolution, {
+    decision: 'approve',
+    optionId: 'a',
+    optionLabel: 'A',
+    note: 'ship it',
+    at: '2026-10-21T00:00:00.000Z',
+  })
+
+  const detail = store.getTaskDetail(task.id).task
+  assert.equal(detail.status, 'reviewing')
+  assert.equal(detail.column, 'running')
+  assert.equal(detail.version, 4)
+  assert.equal(detail.questionResolution.decision, 'approve')
+})
+
+test('answerQuestion on a reviewing card records reject but stays reviewing', async () => {
+  const { store, task } = await setup()
+  const reviewing = await store.updateTask(task.id, { version: 1, status: 'reviewing' })
+  const asked = await store.askQuestion(task.id, questionInput({ version: reviewing.version }))
+
+  const rejected = await store.answerQuestion(task.id, {
+    version: asked.version,
+    decision: 'reject',
+    selected: 'b',
+    note: 'not yet',
+  })
+
+  assert.equal(rejected.status, 'reviewing')
+  assert.equal(rejected.column, 'running')
+  assert.equal(rejected.attentionReason, null)
+  assert.equal(rejected.questionResolution.decision, 'reject')
+  assert.equal(rejected.questionResolution.optionId, 'b')
+})
+
 test('answerQuestion resolves a plain review without a pending question', async () => {
   const { store, task } = await setup()
   await store.updateTask(task.id, { version: 1, status: 'in_review' })

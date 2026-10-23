@@ -22,16 +22,32 @@ export class BoardPort {
     throw notImplemented('listAssigned')
   }
 
+  listReviewQueue(actorId) {
+    throw notImplemented('listReviewQueue')
+  }
+
   getTask(id) {
     throw notImplemented('getTask')
+  }
+
+  getTaskDetail(id) {
+    throw notImplemented('getTaskDetail')
   }
 
   claim(id, actor, leaseSeconds) {
     throw notImplemented('claim')
   }
 
+  claimReview(id, actor, leaseSeconds) {
+    throw notImplemented('claimReview')
+  }
+
   updateStatus(id, version, status, actor) {
     throw notImplemented('updateStatus')
+  }
+
+  submitForReview(id, version, actor) {
+    throw notImplemented('submitForReview')
   }
 
   comment(id, body, actor) {
@@ -94,8 +110,24 @@ export class LocalBoardAdapter extends BoardPort {
     )
   }
 
+  async listReviewQueue(actorId) {
+    const { projects, tasks } = this.#store.bootstrap()
+    const archivedProjects = new Set(
+      projects.filter((project) => project.archivedAt).map((project) => project.id),
+    )
+    return tasks.filter((task) =>
+      task.status === 'reviewing' &&
+      !task.archivedAt &&
+      !archivedProjects.has(task.projectId),
+    )
+  }
+
   getTask(id) {
     return this.#store.getTaskDetail(id).task
+  }
+
+  getTaskDetail(id) {
+    return this.#store.getTaskDetail(id)
   }
 
   async claim(id, actor, leaseSeconds) {
@@ -115,8 +147,25 @@ export class LocalBoardAdapter extends BoardPort {
     }
   }
 
+  async claimReview(id, actor, leaseSeconds) {
+    const task = this.getTask(id)
+    const project = this.#store.bootstrap().projects.find((candidate) => candidate.id === task.projectId)
+    if (task.status !== 'reviewing' || task.archivedAt || project?.archivedAt) {
+      throw Object.assign(new Error(`Task ${id} is not reviewable`), {
+        code: 'TASK_NOT_REVIEWABLE',
+        details: { taskId: id, status: task.status },
+      })
+    }
+    await this.#leases.claim(id, actor, leaseSeconds)
+    return task
+  }
+
   async updateStatus(id, version, status, actor) {
     return this.#store.updateTask(id, { version, status }, actor)
+  }
+
+  async submitForReview(id, version, actor) {
+    return this.#store.updateTask(id, { version, status: 'reviewing' }, actor)
   }
 
   async comment(id, body, actor) {

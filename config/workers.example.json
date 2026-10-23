@@ -8,6 +8,15 @@
       "cwd": "/Users/you/worktrees/builder",
       "maxConcurrent": 1,
       "timeoutSeconds": 900
+    },
+    {
+      "id": "reviewer",
+      "name": "Reviewer",
+      "role": "reviewer",
+      "cwd": "/Users/you/worktrees/reviewer",
+      "agentPreset": "standard",
+      "maxConcurrent": 1,
+      "timeoutSeconds": 300
     }
   ]
 }
