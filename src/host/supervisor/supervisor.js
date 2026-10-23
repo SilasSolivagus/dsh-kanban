@@ -41,6 +41,7 @@ const BOARD_METHODS = Object.freeze([
   'claim',
   'updateStatus',
   'comment',
+  'block',
   'release',
 ])
 
@@ -362,12 +363,21 @@ export class Supervisor {
   }
 
   async #blocked(worker, task, actor, { result, error } = {}) {
+    const reason = result?.summary ?? reasonFor(error) ?? 'worker blocked without a reason'
+    let blockError = null
+    try {
+      await this.#board.block(task.id, task.version, reason, actor)
+    } catch (failure) {
+      blockError = failure
+      this.#log('warn', `cannot mark card ${task.id} blocked: ${reasonFor(failure)}`)
+    }
     const commentError = await this.#comment(task.id, renderBlockedComment(worker, { result, error }), actor)
     const releaseError = await this.#release(task.id, actor)
 
     const details = {}
     if (result !== undefined) details.summary = result.summary
     if (error !== undefined) details.reason = reasonFor(error)
+    if (blockError !== null) details.blockError = reasonFor(blockError)
     if (commentError !== null) details.commentError = reasonFor(commentError)
     if (releaseError !== null) details.releaseError = reasonFor(releaseError)
     return this.#report(worker, task.id, 'blocked', details)

@@ -38,6 +38,10 @@ export class BoardPort {
     throw notImplemented('comment')
   }
 
+  block(id, version, reason, actor) {
+    throw notImplemented('block')
+  }
+
   release(id, actor) {
     throw notImplemented('release')
   }
@@ -117,6 +121,10 @@ export class LocalBoardAdapter extends BoardPort {
 
   async comment(id, body, actor) {
     return this.#store.addComment(id, body, actor)
+  }
+
+  async block(id, version, reason, actor) {
+    return this.#store.updateTask(id, { version, blockedReason: reason }, actor)
   }
 
   async release(id, actor) {

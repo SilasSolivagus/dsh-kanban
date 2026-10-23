@@ -21502,6 +21502,9 @@ var BoardPort = class {
   comment(id, body, actor2) {
     throw notImplemented("comment");
   }
+  block(id, version2, reason, actor2) {
+    throw notImplemented("block");
+  }
   release(id, actor2) {
     throw notImplemented("release");
   }
@@ -21549,6 +21552,9 @@ var LocalBoardAdapter = class extends BoardPort {
   }
   async comment(id, body, actor2) {
     return this.#store.addComment(id, body, actor2);
+  }
+  async block(id, version2, reason, actor2) {
+    return this.#store.updateTask(id, { version: version2, blockedReason: reason }, actor2);
   }
   async release(id, actor2) {
     return this.#leases.release(id, actor2);
@@ -22505,6 +22511,7 @@ var BOARD_METHODS = Object.freeze([
   "claim",
   "updateStatus",
   "comment",
+  "block",
   "release"
 ]);
 function supervisorError(message, details = {}) {
@@ -22766,11 +22773,20 @@ var Supervisor = class {
     return this.#report(worker, current.id, "done", releaseError === null ? {} : { releaseError: reasonFor(releaseError) });
   }
   async #blocked(worker, task, actor2, { result, error: error62 } = {}) {
+    const reason = result?.summary ?? reasonFor(error62) ?? "worker blocked without a reason";
+    let blockError = null;
+    try {
+      await this.#board.block(task.id, task.version, reason, actor2);
+    } catch (failure2) {
+      blockError = failure2;
+      this.#log("warn", `cannot mark card ${task.id} blocked: ${reasonFor(failure2)}`);
+    }
     const commentError = await this.#comment(task.id, renderBlockedComment(worker, { result, error: error62 }), actor2);
     const releaseError = await this.#release(task.id, actor2);
     const details = {};
     if (result !== void 0) details.summary = result.summary;
     if (error62 !== void 0) details.reason = reasonFor(error62);
+    if (blockError !== null) details.blockError = reasonFor(blockError);
     if (commentError !== null) details.commentError = reasonFor(commentError);
     if (releaseError !== null) details.releaseError = reasonFor(releaseError);
     return this.#report(worker, task.id, "blocked", details);

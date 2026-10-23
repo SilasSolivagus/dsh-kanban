@@ -64,6 +64,7 @@ function makeWorld(t, options = {}) {
     claim: [],
     updateStatus: [],
     comment: [],
+    block: [],
     release: [],
     ensure: [],
     prompt: [],
@@ -163,6 +164,18 @@ function makeWorld(t, options = {}) {
       }
       comments.push(comment)
       return clone(comment)
+    },
+
+    async block(id, version, reason, actor) {
+      calls.block.push({ id, version, reason, actor: clone(actor) })
+      events.push({ type: 'block', id })
+      failIf('block', { id, version, reason })
+      const task = tasks.get(id)
+      if (!task) throw failure('TASK_NOT_FOUND', `task ${id} not found`)
+      if (task.version !== version) throw failure('TASK_VERSION_CONFLICT', 'task changed elsewhere')
+      task.blockedReason = reason
+      task.version += 1
+      return clone(task)
     },
 
     async release(id, actor) {
@@ -434,7 +447,9 @@ test('a blocked result comments the summary and leaves the card in progress', as
 
   assert.equal(results[0].outcome, 'blocked')
   assert.equal(world.tasks.get(card.id).status, 'in_progress')
+  assert.equal(world.tasks.get(card.id).blockedReason, 'Need credentials for the deploy API')
   assert.equal(world.calls.updateStatus.length, 0)
+  assert.equal(world.calls.block.length, 1)
   assert.equal(world.calls.comment.length, 1)
   assert.match(world.calls.comment[0].body, /Need credentials for the deploy API/)
   assert.match(world.calls.comment[0].body, /Office must grant access/)
@@ -585,6 +600,7 @@ function completeBoard() {
     claim() {},
     updateStatus() {},
     comment() {},
+    block() {},
     release() {},
   }
 }
