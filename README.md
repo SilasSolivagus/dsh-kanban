@@ -18,7 +18,7 @@
   <a href="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml"><img src="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/version-2.0.0-2F6FB2?style=flat-square" alt="version 2.0.0" />
   <img src="https://img.shields.io/badge/DSH-0.2.1--rc.2-111827?style=flat-square" alt="DSH 0.2.1-rc.2" />
-  <img src="https://img.shields.io/badge/tests-306%20passing-2EA043?style=flat-square" alt="306 tests passing" />
+  <img src="https://img.shields.io/badge/tests-312%20passing-2EA043?style=flat-square" alt="312 tests passing" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA043?style=flat-square" alt="MIT license" /></a>
 </p>
 
@@ -230,8 +230,10 @@ When the worker config declares a `reviewer` role, a builder's Done candidate ta
 - `in_review` remains the human attention state; the reviewer never uses it.
 - With no reviewer configured, the builder-only path is unchanged.
 - A reviewer never reviews a card assigned to itself.
+- **Human override:** the supervisor gate is enforced for builder and reviewer writes. A human may explicitly move a `reviewing` card to Done from the task drawer; that manual override is intentional and is not a reviewer pass.
+- `reviewing` is not offered in the create dialog, but it is available when a human edits an existing card's status.
 
-The full live acceptance sequence is in the [P1.2 review gate runbook](docs/spikes/p1.2-review-gate.md).
+**Live acceptance: PASS on 2026-10-23.** The builder → reviewing → reviewer pass → Done path (DSH-31) and the reviewer reject → **Needs you** path (DSH-32) were both verified on a live board. See the [P1.2 review gate record](docs/spikes/p1.2-review-gate.md).
 
 ## 🛡️ Safety model
 
@@ -249,7 +251,7 @@ The full live acceptance sequence is in the [P1.2 review gate runbook](docs/spik
 - Mac/DSH must be running; no hosted board yet.
 - Worker tools depend on the DSH preset; `standard` is assumed.
 - Lease reclaim after a real crash is tested, but full 7-day soak is not.
-- Reviewer gate is wired and covered by fake end-to-end tests; live acceptance is still pending.
+- Reviewer gate live acceptance passed on 2026-10-23 ([record](docs/spikes/p1.2-review-gate.md)); 7-day soak and Office entry are still open.
 - No A2A, MCP, Grok adapter or hosted board yet.
 - `README.zh-CN.md` may lag English details.
 
@@ -257,8 +259,9 @@ The full live acceptance sequence is in the [P1.2 review gate runbook](docs/spik
 
 - [x] **M1** — actor identity, tokens, project ACL, real activity
 - [x] **P1 alpha** — persistent DSH worker, supervisor, lease, evidence, blocked/reclaim
-- [ ] **P1.2** — 7-day soak, Office entry, reviewer handoff
-- [ ] **P1.3** — cost-tiered office: expensive lead, cheap workers, review gate
+- [x] **P1.2 review gate** — builder → reviewing → reviewer pass/reject, live-verified 2026-10-23
+- [ ] **P1.2 remaining** — 7-day soak, Office entry
+- [ ] **P1.3** — cost-tiered office: expensive lead, cheap workers, reusing the review gate
 - [ ] **P2** — second runtime adapter (HTTP / Grok) against the same worker contract
 - [ ] **P3** — hosted board: Postgres, TLS, auth, multi-user
 - [ ] **P4** — A2A adapter

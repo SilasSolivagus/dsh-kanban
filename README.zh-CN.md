@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml"><img src="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/version-2.0.0-2F6FB2?style=flat-square" alt="version 2.0.0" />
-  <img src="https://img.shields.io/badge/tests-306%20passing-2EA043?style=flat-square" alt="306 tests passing" />
+  <img src="https://img.shields.io/badge/tests-312%20passing-2EA043?style=flat-square" alt="312 tests passing" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA043?style=flat-square" alt="MIT license" /></a>
 </p>
 
@@ -200,8 +200,10 @@ P1 live trial：**12 Done 有 evidence，4 Needs you，16 张卡**，包括：
 - `in_review` 仍是人工处理状态；reviewer 不使用它。
 - 没有配置 reviewer 时，只有 builder 的原有路径不变。
 - reviewer 不评审分配给自己的卡。
+- **人工 override**：supervisor 的 gate 对 builder 和 reviewer 的写入生效；人可以从卡抽屉把 `reviewing` 卡明确拖到 Done。这是有意保留的人工 override，不算 reviewer pass。
+- 新建卡时不提供 `reviewing`，但人工编辑已有卡的状态时可以选择它。
 
-完整 live 验收步骤见 [P1.2 review gate runbook](docs/spikes/p1.2-review-gate.md)。
+**Live 验收：2026-10-23 PASS。** builder → reviewing → reviewer pass → Done（DSH-31）和 reviewer reject → **Needs you**（DSH-32）均已在 live 看板验证。详见 [P1.2 review gate 记录](docs/spikes/p1.2-review-gate.md)。
 
 ## 🛡️ 安全
 
@@ -219,15 +221,16 @@ P1 live trial：**12 Done 有 evidence，4 Needs you，16 张卡**，包括：
 - Mac/DSH 必须开着；还没有 hosted board。
 - worker 工具依赖 DSH preset，默认假设 `standard`。
 - 真实 crash 后 reclaim 已测，但 7 天 soak 未做。
-- review gate 已接线，并有 fake e2e 测试覆盖；live 验收尚未执行。
+- review gate 已于 2026-10-23 live 验收 PASS（[记录](docs/spikes/p1.2-review-gate.md)）；7 天 soak 和 Office 入口仍未完成。
 - 还没有 A2A、MCP、Grok adapter、hosted board。
 
 ## 🗺️ 路线
 
 - [x] M1：actor、token、项目 ACL、真实 activity
 - [x] P1 alpha：持久 worker、supervisor、lease、evidence、blocked/reclaim
-- [ ] P1.2：7 天、Office 入口、reviewer handoff
-- [ ] P1.3：贵主管 + 便宜工人 + review gate
+- [x] P1.2 review gate：reviewer pass/reject，2026-10-23 live 验收
+- [ ] P1.2 剩余：7 天 soak、Office 入口
+- [ ] P1.3：贵主管 + 便宜工人，复用 review gate
 - [ ] P2：第二个 runtime adapter（HTTP / Grok）
 - [ ] P3：Hosted Board（Postgres、TLS、auth、多用户）
 - [ ] P4：A2A adapter
