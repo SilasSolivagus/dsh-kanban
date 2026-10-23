@@ -91,7 +91,10 @@ function timeoutMsFor(worker) {
 
 function leaseSecondsFor(worker) {
   const seconds = Number(worker.timeoutSeconds)
-  return Number.isInteger(seconds) && seconds > 0 ? seconds : DEFAULT_LEASE_TTL_SECONDS
+  if (!Number.isInteger(seconds) || seconds <= 0) return DEFAULT_LEASE_TTL_SECONDS
+  // The prompt timeout must expire before the lease. Otherwise a slow worker
+  // can be reclaimed while it is still running, causing a duplicate prompt.
+  return seconds + 60
 }
 
 function reasonFor(error) {

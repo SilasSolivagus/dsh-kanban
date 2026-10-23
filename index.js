@@ -21967,7 +21967,10 @@ var DshWorkerSession = class {
     let handle;
     try {
       handle = await withTimeout(
-        Promise.resolve(agentLoop.resume(ctx, { resumeSessionId: parentId })),
+        Promise.resolve(agentLoop.resume(ctx, {
+          resumeSessionId: parentId,
+          signal: AbortSignal.timeout(ACCEPT_TIMEOUT_MS)
+        })),
         ACCEPT_TIMEOUT_MS,
         "hidden parent resume",
         { parentId }
@@ -22550,7 +22553,8 @@ function timeoutMsFor(worker) {
 }
 function leaseSecondsFor(worker) {
   const seconds = Number(worker.timeoutSeconds);
-  return Number.isInteger(seconds) && seconds > 0 ? seconds : DEFAULT_LEASE_TTL_SECONDS;
+  if (!Number.isInteger(seconds) || seconds <= 0) return DEFAULT_LEASE_TTL_SECONDS;
+  return seconds + 60;
 }
 function reasonFor(error62) {
   if (error62 === void 0 || error62 === null) return "unknown error";

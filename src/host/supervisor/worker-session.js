@@ -527,7 +527,10 @@ export class DshWorkerSession {
     let handle
     try {
       handle = await withTimeout(
-        Promise.resolve(agentLoop.resume(ctx, { resumeSessionId: parentId })),
+        Promise.resolve(agentLoop.resume(ctx, {
+          resumeSessionId: parentId,
+          signal: AbortSignal.timeout(ACCEPT_TIMEOUT_MS),
+        })),
         ACCEPT_TIMEOUT_MS,
         'hidden parent resume',
         { parentId },

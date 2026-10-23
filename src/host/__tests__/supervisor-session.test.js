@@ -326,6 +326,7 @@ test('ensure resumes the hidden parent when it is no longer live', async (t) => 
   assert.ok(resume, 'expected agentLoop.resume for a cold hidden parent')
   assert.equal(resume.ownerCtx, world.ctx)
   assert.equal(resume.options.resumeSessionId, ids.parentId)
+  assert.ok(resume.options.signal, 'resume must receive an AbortSignal')
   assert.equal(activationCalls(world).length, 1, 'the persisted child must not be replaced')
 })
 

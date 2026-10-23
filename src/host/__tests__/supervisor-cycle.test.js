@@ -298,7 +298,7 @@ test('one card is claimed, prompted, and completed with evidence', async (t) => 
   // Claim carries the full agent actor and a lease that outlives the prompt.
   assert.equal(world.calls.claim.length, 1)
   assert.equal(world.calls.claim[0].id, card.id)
-  assert.equal(world.calls.claim[0].leaseSeconds, 900)
+  assert.equal(world.calls.claim[0].leaseSeconds, 960)
   assert.deepEqual(world.calls.claim[0].actor, ACTOR)
 
   // Session + role prompt + card prompt happen after the claim.
