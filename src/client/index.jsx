@@ -1,7 +1,8 @@
 import React from 'react'
 import { App } from './components/App.js'
+import { openOffice } from './office-entry.js'
 
-export const inject = ['slots', 'locale']
+export const inject = ['slots', 'locale', 'uiWorkspace']
 
 const NS = 'kanban'
 
@@ -17,6 +18,8 @@ const ZH = {
   filters: '筛选',
   runningCount: '{count} 个运行中',
   newCard: '新建卡片',
+  findOffice: '找掌柜',
+  officeHint: '和掌柜说意图；掌柜会澄清并拆卡，看板只放状态与证据。',
   backlog: 'Backlog',
   running: 'Running',
   needs: 'Needs you',
@@ -247,6 +250,8 @@ const EN = {
   filters: 'Filters',
   runningCount: '{count} running',
   newCard: 'New card',
+  findOffice: 'Brief 掌柜',
+  officeHint: 'Talk to 掌柜; they clarify intent and create cards. The board holds state and evidence.',
   backlog: 'Backlog',
   running: 'Running',
   needs: 'Needs you',
@@ -473,6 +478,8 @@ function SidebarIcon({ size = 18 }) {
   </svg>
 }
 
+const BoardApp = (props) => <App {...props} onOpenOffice={() => openOffice(ctx.uiWorkspace)} />
+
 export function apply(ctx) {
   ctx.effect(() => {
     const offZh = ctx.locale.register(NS, 'zh', ZH)
@@ -485,7 +492,7 @@ export function apply(ctx) {
     name: 'main',
     key: 'kanban',
     locale: NS,
-  }, App))
+  }, BoardApp))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
     name: 'sidebar.panellist',
     id: 'kanban',

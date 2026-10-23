@@ -18,7 +18,7 @@
   <a href="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml"><img src="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/version-2.0.0-2F6FB2?style=flat-square" alt="version 2.0.0" />
   <img src="https://img.shields.io/badge/DSH-0.2.1--rc.2-111827?style=flat-square" alt="DSH 0.2.1-rc.2" />
-  <img src="https://img.shields.io/badge/tests-316%20passing-2EA043?style=flat-square" alt="316 tests passing" />
+  <img src="https://img.shields.io/badge/tests-319%20passing-2EA043?style=flat-square" alt="319 tests passing" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA043?style=flat-square" alt="MIT license" /></a>
 </p>
 
@@ -235,6 +235,23 @@ When the worker config declares a `reviewer` role, a builder's Done candidate ta
 
 **Live acceptance: PASS on 2026-10-23.** The builder → reviewing → reviewer pass → Done path (DSH-31) and the reviewer reject → **Needs you** path (DSH-32) were both verified on a live board. See the [P1.2 review gate record](docs/spikes/p1.2-review-gate.md).
 
+## 🧑‍💼 Office entry (P1.2b)
+
+The board header has **找掌柜 / Brief 掌柜**. It opens a new DSH session with the Office brief template:
+
+```text
+你是掌柜（Office）...
+1. 目标
+2. 资料
+3. 验收
+4. 边界
+我的意图：
+```
+
+Intent, clarification and card splitting happen in that DSH conversation. The board stays the state layer: cards, status, evidence, Needs you.
+
+This is the first slice: each brief opens a fresh Office session. Pinning and reusing one `掌柜 · Office` session is the next UX step.
+
 ## 🛡️ Safety model
 
 - Tokens never enter cards, comments, prompts or Git.
@@ -251,7 +268,8 @@ When the worker config declares a `reviewer` role, a builder's Done candidate ta
 - Mac/DSH must be running; no hosted board yet.
 - Worker tools depend on the DSH preset; `standard` is assumed.
 - Lease reclaim after a real crash is tested, but full 7-day soak is not.
-- Reviewer gate live acceptance passed on 2026-10-23 ([record](docs/spikes/p1.2-review-gate.md)); 7-day soak and Office entry are still open.
+- Reviewer gate live acceptance passed on 2026-10-23 ([record](docs/spikes/p1.2-review-gate.md)).
+- Office entry is a first slice (fresh brief session); pinned/reused Office session and 7-day soak remain open.
 - No A2A, MCP, Grok adapter or hosted board yet.
 - `README.zh-CN.md` may lag English details.
 
@@ -260,7 +278,8 @@ When the worker config declares a `reviewer` role, a builder's Done candidate ta
 - [x] **M1** — actor identity, tokens, project ACL, real activity
 - [x] **P1 alpha** — persistent DSH worker, supervisor, lease, evidence, blocked/reclaim
 - [x] **P1.2 review gate** — builder → reviewing → reviewer pass/reject, live-verified 2026-10-23
-- [ ] **P1.2 remaining** — 7-day soak, Office entry
+- [x] **P1.2b Office brief** — header entry opens a DSH Office session with the four-field brief
+- [ ] **P1.2 remaining** — pinned/reused Office session, 7-day soak
 - [ ] **P1.3** — cost-tiered office: expensive lead, cheap workers, reusing the review gate
 - [ ] **P2** — second runtime adapter (HTTP / Grok) against the same worker contract
 - [ ] **P3** — hosted board: Postgres, TLS, auth, multi-user

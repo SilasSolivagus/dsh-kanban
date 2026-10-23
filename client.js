@@ -4504,6 +4504,9 @@ html[data-fullscreen] .dkb-header {
 html[data-fullscreen] .dkb-main {
   padding-left: max(20px, var(--dsh-frame-leading-clearance, 0px), var(--dkb-rail-safe, 0px));
 }
+
+.dkb-office-button { white-space: nowrap; }
+.dkb-empty-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 `;
 
 // src/client/components/App.js
@@ -4530,7 +4533,7 @@ function SearchIcon() {
 function RefreshIcon({ spinning }) {
   return /* @__PURE__ */ import_react10.default.createElement("svg", { className: spinning ? "dkb-spin" : void 0, width: "15", height: "15", viewBox: "0 0 15 15", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react10.default.createElement("path", { d: "M12.3 6.1A5 5 0 1 0 12.1 9.6", stroke: "currentColor", strokeWidth: "1.4", strokeLinecap: "round" }), /* @__PURE__ */ import_react10.default.createElement("path", { d: "M12.6 2.8v3.6H9", stroke: "currentColor", strokeWidth: "1.4", strokeLinecap: "round", strokeLinejoin: "round" }));
 }
-function App({ t }) {
+function App({ t, onOpenOffice }) {
   const [projects, setProjects] = (0, import_react10.useState)([]);
   const [tasks, setTasks] = (0, import_react10.useState)([]);
   const [selectedProjectId, setSelectedProjectId] = (0, import_react10.useState)(ALL_PROJECTS);
@@ -4980,7 +4983,16 @@ function App({ t }) {
       placeholder: t("search"),
       "aria-label": t("search")
     }
-  )), /* @__PURE__ */ import_react10.default.createElement(
+  )), onOpenOffice ? /* @__PURE__ */ import_react10.default.createElement(
+    "button",
+    {
+      type: "button",
+      className: "dkb-button dkb-office-button",
+      onClick: onOpenOffice,
+      title: t("officeHint")
+    },
+    t("findOffice")
+  ) : null, /* @__PURE__ */ import_react10.default.createElement(
     FiltersMenu,
     {
       t,
@@ -5020,7 +5032,7 @@ function App({ t }) {
     restoringProject ? t("submitting") : t("restoreProject")
   )) : null, /* @__PURE__ */ import_react10.default.createElement("main", { className: "dkb-main" }, loading && projects.length === 0 ? /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb-state" }, /* @__PURE__ */ import_react10.default.createElement("p", { className: "dkb-muted" }, t("loading"))) : null, !loading && error && projects.length === 0 ? /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb-state" }, /* @__PURE__ */ import_react10.default.createElement("p", { className: "dkb-state-title" }, t("loadErrorTitle")), /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dkb-button dkb-button-primary", onClick: () => {
     void load();
-  } }, t("retry"))) : null, !loading && !error && projects.length === 0 ? /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb-state" }, /* @__PURE__ */ import_react10.default.createElement("p", { className: "dkb-state-title" }, t("noProjects")), /* @__PURE__ */ import_react10.default.createElement("p", { className: "dkb-muted" }, t("noProjectsHint")), /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dkb-button dkb-button-primary", onClick: () => openDialog({ type: "create" }) }, t("createProject"))) : null, projects.length > 0 ? /* @__PURE__ */ import_react10.default.createElement("section", { className: "dkb-board", "aria-label": t("nav") }, /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb-board-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("h2", { className: "dkb-board-title" }, /* @__PURE__ */ import_react10.default.createElement("span", null, selectedProject?.name ?? t("allProjects")), selectedProjectArchived ? /* @__PURE__ */ import_react10.default.createElement("span", { className: "dkb-badge dkb-badge-archived" }, t("archived")) : null), /* @__PURE__ */ import_react10.default.createElement("p", { className: "dkb-board-meta" }, t("taskCount", { count: visibleTasks.length }), filterCount > 0 ? ` \xB7 ${t("filtersActive", { count: filterCount })}` : "", selectedProjectArchived ? ` \xB7 ${t("readOnly")}` : ""))), visibleTasks.length === 0 && (search.trim() || filterCount > 0) ? /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb-board-empty" }, /* @__PURE__ */ import_react10.default.createElement("span", null, t("noMatches")), /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dkb-button dkb-button-small", onClick: clearSearchAndFilters }, t("clearSearchAndFilters"))) : null, /* @__PURE__ */ import_react10.default.createElement(
+  } }, t("retry"))) : null, !loading && !error && projects.length === 0 ? /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb-state" }, /* @__PURE__ */ import_react10.default.createElement("p", { className: "dkb-state-title" }, t("noProjects")), /* @__PURE__ */ import_react10.default.createElement("p", { className: "dkb-muted" }, t("noProjectsHint")), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb-empty-actions" }, /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dkb-button dkb-button-primary", onClick: () => openDialog({ type: "create" }) }, t("createProject")), onOpenOffice ? /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dkb-button", onClick: onOpenOffice }, t("findOffice")) : null)) : null, projects.length > 0 ? /* @__PURE__ */ import_react10.default.createElement("section", { className: "dkb-board", "aria-label": t("nav") }, /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb-board-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("h2", { className: "dkb-board-title" }, /* @__PURE__ */ import_react10.default.createElement("span", null, selectedProject?.name ?? t("allProjects")), selectedProjectArchived ? /* @__PURE__ */ import_react10.default.createElement("span", { className: "dkb-badge dkb-badge-archived" }, t("archived")) : null), /* @__PURE__ */ import_react10.default.createElement("p", { className: "dkb-board-meta" }, t("taskCount", { count: visibleTasks.length }), filterCount > 0 ? ` \xB7 ${t("filtersActive", { count: filterCount })}` : "", selectedProjectArchived ? ` \xB7 ${t("readOnly")}` : ""))), visibleTasks.length === 0 && (search.trim() || filterCount > 0) ? /* @__PURE__ */ import_react10.default.createElement("div", { className: "dkb-board-empty" }, /* @__PURE__ */ import_react10.default.createElement("span", null, t("noMatches")), /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dkb-button dkb-button-small", onClick: clearSearchAndFilters }, t("clearSearchAndFilters"))) : null, /* @__PURE__ */ import_react10.default.createElement(
     Board,
     {
       tasks: visibleTasks,
@@ -5060,8 +5072,28 @@ function App({ t }) {
   ) : null));
 }
 
+// src/client/office-entry.js
+var OFFICE_BRIEF_PROMPT = [
+  "\u4F60\u662F\u638C\u67DC\uFF08Office\uFF09\uFF0C\u8D1F\u8D23\u548C Silas \u6F84\u6E05\u610F\u56FE\u3001\u62C6\u5361\u3001\u5B9A\u9A8C\u6536\uFF0C\u4E0D\u76F4\u63A5\u505A\u6267\u884C\u5DE5\u4F5C\u3002",
+  "",
+  "\u5148\u95EE\u6E05\u56DB\u4EF6\u4E8B\uFF0C\u518D\u521B\u5EFA\u5361\u7247\uFF1A",
+  "1. \u76EE\u6807\uFF1A\u8FD9\u6B21\u8981\u6539\u6210\u4EC0\u4E48\u6837",
+  "2. \u8D44\u6599\uFF1A\u53EA\u7ED9\u7528\u5F97\u5230\u7684\u6587\u4EF6\u548C\u80CC\u666F",
+  "3. \u9A8C\u6536\uFF1A\u600E\u6837\u7B97\u505A\u5B8C\uFF0C\u8DD1\u54EA\u6761\u6D4B\u8BD5",
+  "4. \u8FB9\u754C\uFF1A\u54EA\u4E9B\u6587\u4EF6\u4E0D\u8BB8\u78B0",
+  "",
+  "\u786E\u8BA4\u540E\u521B\u5EFA\u770B\u677F\u5361\u7247\uFF0Cassignee=builder\u3002",
+  "",
+  "\u6211\u7684\u610F\u56FE\uFF1A"
+].join("\n");
+function openOffice(uiWorkspace, { prompt = OFFICE_BRIEF_PROMPT } = {}) {
+  if (!uiWorkspace || typeof uiWorkspace.startSession !== "function") return false;
+  uiWorkspace.startSession(void 0, { prompt, agentPreset: "standard" });
+  return true;
+}
+
 // src/client/index.jsx
-var inject = ["slots", "locale"];
+var inject = ["slots", "locale", "uiWorkspace"];
 var NS = "kanban";
 var ZH = {
   nav: "\u770B\u677F",
@@ -5075,6 +5107,8 @@ var ZH = {
   filters: "\u7B5B\u9009",
   runningCount: "{count} \u4E2A\u8FD0\u884C\u4E2D",
   newCard: "\u65B0\u5EFA\u5361\u7247",
+  findOffice: "\u627E\u638C\u67DC",
+  officeHint: "\u548C\u638C\u67DC\u8BF4\u610F\u56FE\uFF1B\u638C\u67DC\u4F1A\u6F84\u6E05\u5E76\u62C6\u5361\uFF0C\u770B\u677F\u53EA\u653E\u72B6\u6001\u4E0E\u8BC1\u636E\u3002",
   backlog: "Backlog",
   running: "Running",
   needs: "Needs you",
@@ -5304,6 +5338,8 @@ var EN = {
   filters: "Filters",
   runningCount: "{count} running",
   newCard: "New card",
+  findOffice: "Brief \u638C\u67DC",
+  officeHint: "Talk to \u638C\u67DC; they clarify intent and create cards. The board holds state and evidence.",
   backlog: "Backlog",
   running: "Running",
   needs: "Needs you",
@@ -5524,22 +5560,23 @@ var EN = {
 function SidebarIcon({ size = 18 }) {
   return /* @__PURE__ */ import_react11.default.createElement("svg", { width: size, height: size, viewBox: "0 0 18 18", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react11.default.createElement("rect", { x: "2.2", y: "2.5", width: "3.3", height: "13", rx: "1.2", fill: "currentColor", opacity: ".38" }), /* @__PURE__ */ import_react11.default.createElement("rect", { x: "7.35", y: "2.5", width: "3.3", height: "13", rx: "1.2", fill: "currentColor", opacity: ".66" }), /* @__PURE__ */ import_react11.default.createElement("rect", { x: "12.5", y: "2.5", width: "3.3", height: "13", rx: "1.2", fill: "currentColor" }));
 }
-function apply(ctx) {
-  ctx.effect(() => {
-    const offZh = ctx.locale.register(NS, "zh", ZH);
-    const offEn = ctx.locale.register(NS, "en", EN);
+var BoardApp = (props) => /* @__PURE__ */ import_react11.default.createElement(App, { ...props, onOpenOffice: () => openOffice(ctx.uiWorkspace) });
+function apply(ctx2) {
+  ctx2.effect(() => {
+    const offZh = ctx2.locale.register(NS, "zh", ZH);
+    const offEn = ctx2.locale.register(NS, "en", EN);
     return () => {
       offZh();
       offEn();
     };
   }, "dsh-kanban: locale");
-  const t = ctx.locale.bind(NS);
-  ctx.slots.inject("main", () => ctx.slots.register({
+  const t = ctx2.locale.bind(NS);
+  ctx2.slots.inject("main", () => ctx2.slots.register({
     name: "main",
     key: "kanban",
     locale: NS
-  }, App));
-  ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({
+  }, BoardApp));
+  ctx2.slots.inject("sidebar.panellist", () => ctx2.slots.register({
     name: "sidebar.panellist",
     id: "kanban",
     order: 20,

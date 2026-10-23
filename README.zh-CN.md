@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml"><img src="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/version-2.0.0-2F6FB2?style=flat-square" alt="version 2.0.0" />
-  <img src="https://img.shields.io/badge/tests-316%20passing-2EA043?style=flat-square" alt="316 tests passing" />
+  <img src="https://img.shields.io/badge/tests-319%20passing-2EA043?style=flat-square" alt="319 tests passing" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA043?style=flat-square" alt="MIT license" /></a>
 </p>
 
@@ -205,7 +205,22 @@ P1 live trial：**12 Done 有 evidence，4 Needs you，16 张卡**，包括：
 
 **Live 验收：2026-10-23 PASS。** builder → reviewing → reviewer pass → Done（DSH-31）和 reviewer reject → **Needs you**（DSH-32）均已在 live 看板验证。详见 [P1.2 review gate 记录](docs/spikes/p1.2-review-gate.md)。
 
-## 🛡️ 安全
+## 🧑‍💼 掌柜入口（P1.2b）
+
+看板顶部有 **找掌柜**。它会打开一个新的 DSH 会话，并预填掌柜 brief：
+
+```text
+你是掌柜（Office）...
+1. 目标
+2. 资料
+3. 验收
+4. 边界
+我的意图：
+```
+
+意图、澄清、拆卡都在这个 DSH 会话里完成。看板只负责状态、证据和 Needs you。
+
+这是第一版：每次 brief 打开一个新 Office 会话。固定并复用同一个 `掌柜 · Office` 会话是下一步。
 
 - token 不进卡、评论、prompt、Git。
 - agent 写入带 actor。
@@ -221,7 +236,8 @@ P1 live trial：**12 Done 有 evidence，4 Needs you，16 张卡**，包括：
 - Mac/DSH 必须开着；还没有 hosted board。
 - worker 工具依赖 DSH preset，默认假设 `standard`。
 - 真实 crash 后 reclaim 已测，但 7 天 soak 未做。
-- review gate 已于 2026-10-23 live 验收 PASS（[记录](docs/spikes/p1.2-review-gate.md)）；7 天 soak 和 Office 入口仍未完成。
+- review gate 已于 2026-10-23 live 验收 PASS（[记录](docs/spikes/p1.2-review-gate.md)）。
+- Office 入口是第一个版本（每次新 brief）；固定/复用 Office 会话和 7 天 soak 仍未完成。
 - 还没有 A2A、MCP、Grok adapter、hosted board。
 
 ## 🗺️ 路线
@@ -229,7 +245,8 @@ P1 live trial：**12 Done 有 evidence，4 Needs you，16 张卡**，包括：
 - [x] M1：actor、token、项目 ACL、真实 activity
 - [x] P1 alpha：持久 worker、supervisor、lease、evidence、blocked/reclaim
 - [x] P1.2 review gate：reviewer pass/reject，2026-10-23 live 验收
-- [ ] P1.2 剩余：7 天 soak、Office 入口
+- [x] P1.2b Office brief：顶部入口打开带四要素 brief 的 DSH Office 会话
+- [ ] P1.2 剩余：固定/复用 Office 会话、7 天 soak
 - [ ] P1.3：贵主管 + 便宜工人，复用 review gate
 - [ ] P2：第二个 runtime adapter（HTTP / Grok）
 - [ ] P3：Hosted Board（Postgres、TLS、auth、多用户）
