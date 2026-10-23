@@ -107,10 +107,11 @@ export class LocalBoardAdapter extends BoardPort {
   }
 
   async listReviewQueue(actorId) {
+    const { projects, tasks } = this.#store.bootstrap()
     const archivedProjects = new Set(
-      this.#store.bootstrap().projects.filter((project) => project.archivedAt).map((project) => project.id),
+      projects.filter((project) => project.archivedAt).map((project) => project.id),
     )
-    return this.#store.bootstrap().tasks.filter((task) =>
+    return tasks.filter((task) =>
       task.status === 'reviewing' &&
       !task.archivedAt &&
       !archivedProjects.has(task.projectId),
@@ -140,6 +141,13 @@ export class LocalBoardAdapter extends BoardPort {
 
   async claimReview(id, actor, leaseSeconds) {
     const task = this.getTask(id)
+    const project = this.#store.bootstrap().projects.find((candidate) => candidate.id === task.projectId)
+    if (task.status !== 'reviewing' || task.archivedAt || project?.archivedAt) {
+      throw Object.assign(new Error(`Task ${id} is not reviewable`), {
+        code: 'TASK_NOT_REVIEWABLE',
+        details: { taskId: id, status: task.status },
+      })
+    }
     await this.#leases.claim(id, actor, leaseSeconds)
     return task
   }

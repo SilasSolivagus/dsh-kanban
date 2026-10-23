@@ -13,11 +13,10 @@ const REVIEWER = Object.freeze({
   avatarUrl: null,
 })
 
-// The real lease store lands in Task 3. This fake only provides the facade
-// contract the adapter relies on: claim(taskId, actor, leaseSeconds) and
-// release(taskId, actor), with lease metadata kept in a small "state" map.
-// getActive() is exposed so tests can inspect the held lease, mirroring the
-// real lease store's read method.
+// The adapter depends on a narrow lease facade: claim(taskId, actor,
+// leaseSeconds) and release(taskId, actor), with lease metadata kept in a small
+// "state" map. getActive() is exposed so tests can inspect the held lease,
+// mirroring the real lease store's read method.
 function makeLeases() {
   const active = new Map()
   const calls = []
@@ -286,6 +285,8 @@ test('lists only reviewing cards in the review queue', async () => {
 
 test('listReviewQueue hides archived cards and cards in archived projects', async () => {
   const { store, actors, board } = setup()
+  // store.bootstrap() already drops archived tasks; this test covers both the
+  // adapter's belt-and-braces guard and the archived-project filter.
   const live = await seedTask({ store, actors }, { status: 'reviewing' })
 
   const archivedCard = await seedTask({ store, actors }, { status: 'reviewing' })
@@ -320,6 +321,64 @@ test('claimReview leases without changing the reviewing status', async () => {
   const stored = store.getTaskDetail(card.id).task
   assert.equal(stored.status, 'reviewing')
   assert.equal(stored.version, card.version)
+})
+
+for (const status of ['done', 'canceled', 'in_progress', 'todo']) {
+  test(`claimReview rejects a ${status} card without taking a lease`, async () => {
+    const { store, actors, leases, board } = setup()
+    const card = await seedTask({ store, actors }, { status })
+
+    await assert.rejects(
+      () => board.claimReview(card.id, REVIEWER, 60),
+      (error) =>
+        error.code === 'TASK_NOT_REVIEWABLE' &&
+        error.details.taskId === card.id &&
+        error.details.status === status,
+    )
+
+    assert.equal(leases.getActive(card.id), null)
+    assert.deepEqual(leases.calls, [])
+  })
+}
+
+test('claimReview rejects an archived card without taking a lease', async () => {
+  const { store, actors, leases, board } = setup()
+  const card = await seedTask({ store, actors }, { status: 'reviewing' })
+  await store.archiveTask(card.id, { version: card.version })
+
+  await assert.rejects(
+    () => board.claimReview(card.id, REVIEWER, 60),
+    (error) =>
+      error.code === 'TASK_NOT_REVIEWABLE' &&
+      error.details.taskId === card.id &&
+      error.details.status === 'reviewing',
+  )
+
+  assert.equal(leases.getActive(card.id), null)
+  assert.deepEqual(leases.calls, [])
+})
+
+test('claimReview rejects a card in an archived project without taking a lease', async () => {
+  const { store, actors, leases, board } = setup()
+  const project = await store.createProject({ name: 'Old board' })
+  const card = await store.createTask({
+    projectId: project.id,
+    title: 'card',
+    status: 'reviewing',
+    assigneeId: 'builder',
+  }, actors.get('office'))
+  await store.archiveProject(project.id)
+
+  await assert.rejects(
+    () => board.claimReview(card.id, REVIEWER, 60),
+    (error) =>
+      error.code === 'TASK_NOT_REVIEWABLE' &&
+      error.details.taskId === card.id &&
+      error.details.status === 'reviewing',
+  )
+
+  assert.equal(leases.getActive(card.id), null)
+  assert.deepEqual(leases.calls, [])
 })
 
 test('submitForReview writes the reviewing status with the actor', async () => {
