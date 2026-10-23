@@ -18,7 +18,7 @@
   <a href="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml"><img src="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/version-2.0.0-2F6FB2?style=flat-square" alt="version 2.0.0" />
   <img src="https://img.shields.io/badge/DSH-0.2.1--rc.2-111827?style=flat-square" alt="DSH 0.2.1-rc.2" />
-  <img src="https://img.shields.io/badge/tests-256%20passing-2EA043?style=flat-square" alt="256 tests passing" />
+  <img src="https://img.shields.io/badge/tests-306%20passing-2EA043?style=flat-square" alt="306 tests passing" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA043?style=flat-square" alt="MIT license" /></a>
 </p>
 
@@ -205,8 +205,8 @@ Silas → Office → card assigned to builder
   → supervisor claims a lease
   → builder session receives the card
   → builder returns JSON + evidence
-  → supervisor writes comment + Done
-  → Needs you only for blocked / review / decision
+  → reviewer pass → Done; reviewer reject → Needs you
+  → without a reviewer: supervisor writes comment + Done
 ```
 
 P1 live trial: **12 Done with evidence, 4 Needs you, 16 cards**, including:
@@ -217,6 +217,21 @@ P1 live trial: **12 Done with evidence, 4 Needs you, 16 cards**, including:
 - done without evidence → blocked
 - expired lease → reclaimed live
 - real SIGKILL → app restarted, no duplicate prompt
+
+## 🔍 Review gate
+
+When the worker config declares a `reviewer` role, a builder's Done candidate takes one more step:
+
+- A builder `done` result becomes `reviewing` instead of Done.
+- The reviewer is a separate persistent DSH worker with its own `cwd` and `docs/agents/reviewer.md`.
+- Reviewer `pass` → Done, with the verdict and its evidence commented on the card.
+- Reviewer `reject` → the card stays `reviewing` with `blockedReason`, so it appears in **Needs you**.
+- A reviewing card is picked up on the next supervisor cycle, not the same one.
+- `in_review` remains the human attention state; the reviewer never uses it.
+- With no reviewer configured, the builder-only path is unchanged.
+- A reviewer never reviews a card assigned to itself.
+
+The full live acceptance sequence is in the [P1.2 review gate runbook](docs/spikes/p1.2-review-gate.md).
 
 ## 🛡️ Safety model
 
@@ -234,7 +249,7 @@ P1 live trial: **12 Done with evidence, 4 Needs you, 16 cards**, including:
 - Mac/DSH must be running; no hosted board yet.
 - Worker tools depend on the DSH preset; `standard` is assumed.
 - Lease reclaim after a real crash is tested, but full 7-day soak is not.
-- No handoff to a reviewer worker yet.
+- Reviewer gate is wired and covered by fake end-to-end tests; live acceptance is still pending.
 - No A2A, MCP, Grok adapter or hosted board yet.
 - `README.zh-CN.md` may lag English details.
 
@@ -257,6 +272,7 @@ See [the product plan](docs/superpowers/plans/2026-10-23-agent-board-product.md)
 - [P1 trial](docs/spikes/p1.1-ten-card-trial.md)
 - [Lease reclaim + crash probe](docs/spikes/p1.1-lease-and-crash.md)
 - [Real SIGKILL probe](docs/spikes/p1.1-kill9.md)
+- [P1.2 review gate runbook](docs/spikes/p1.2-review-gate.md)
 - [Hosted board plan](docs/superpowers/plans/2026-10-23-hosted-kanban-a2a.md)
 
 ## 🛠️ Development

@@ -55,7 +55,7 @@ function columnForTask(task) {
   const attention = attentionReason(task);
   if (attention) return "needs";
   if (task.status === "backlog" || task.status === "todo") return "backlog";
-  if (task.status === "in_progress") return "running";
+  if (task.status === "in_progress" || task.status === "reviewing") return "running";
   if (task.status === "done") return "done";
   return null;
 }
@@ -81,6 +81,7 @@ var STATUSES = [
   "backlog",
   "todo",
   "in_progress",
+  "reviewing",
   "in_review",
   "done",
   "canceled"
@@ -182,7 +183,7 @@ function statusForColumn(columnId, currentStatus) {
     return currentStatus === "backlog" || currentStatus === "todo" ? currentStatus : "backlog";
   }
   if (columnId === "running") {
-    return currentStatus === "in_progress" ? currentStatus : "in_progress";
+    return currentStatus === "in_progress" || currentStatus === "reviewing" ? currentStatus : "in_progress";
   }
   if (columnId === "done") {
     return currentStatus === "done" ? currentStatus : "done";
@@ -1045,7 +1046,7 @@ function formatActivityValue(field, value, t) {
 // src/client/components/dialogs.js
 var import_react8 = __toESM(require("react"), 1);
 var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-var CREATE_STATUSES = STATUSES.filter((status) => status !== "canceled");
+var CREATE_STATUSES = STATUSES.filter((status) => status !== "canceled" && status !== "reviewing");
 function projectErrorText(error, t) {
   if (error?.code === "PROJECT_NOT_EMPTY") {
     return t("projectNotEmpty", { count: error?.details?.taskCount ?? 0 });
@@ -4684,7 +4685,7 @@ function App({ t }) {
       return haystack.some((value) => String(value ?? "").toLowerCase().includes(query));
     });
   }, [boardTasks, selectedProjectId, filters, search, projectNames]);
-  const runningCount = visibleTasks.filter((task) => task.status === "in_progress").length;
+  const runningCount = visibleTasks.filter((task) => task.column === "running").length;
   const filterCount = activeFilterCount(filters);
   const openDialog = (0, import_react10.useCallback)((dialog) => {
     const key = `dkb-dialog-${dialogKey.current++}`;
@@ -5281,6 +5282,7 @@ var ZH = {
   status_backlog: "\u5F85\u7ACB\u9879",
   status_todo: "\u7B49\u5F85\u8BA4\u9886",
   status_in_progress: "\u5904\u7406\u4E2D",
+  status_reviewing: "\u8BC4\u5BA1\u4E2D",
   status_in_review: "\u7B49\u4F60\u786E\u8BA4",
   status_done: "\u5B8C\u6210",
   status_canceled: "\u53D6\u6D88",
@@ -5509,6 +5511,7 @@ var EN = {
   status_backlog: "Backlog",
   status_todo: "To do",
   status_in_progress: "In progress",
+  status_reviewing: "Reviewing",
   status_in_review: "In review",
   status_done: "Done",
   status_canceled: "Canceled",

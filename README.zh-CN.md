@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml"><img src="https://github.com/SilasSolivagus/dsh-kanban/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/version-2.0.0-2F6FB2?style=flat-square" alt="version 2.0.0" />
-  <img src="https://img.shields.io/badge/tests-256%20passing-2EA043?style=flat-square" alt="256 tests passing" />
+  <img src="https://img.shields.io/badge/tests-306%20passing-2EA043?style=flat-square" alt="306 tests passing" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA043?style=flat-square" alt="MIT license" /></a>
 </p>
 
@@ -174,9 +174,9 @@ worker 读取 `docs/agents/builder.md` 作为角色契约，输出必须是：
 Silas → Office → 建卡，assignee=builder
   → supervisor claim lease
   → builder 持久 session 收到卡
-  → 返回 JSON + evidence
-  → supervisor 写评论 + Done
-  → 只有 blocked / review / decision 进 Needs you
+  → builder 返回 JSON + evidence
+  → reviewer pass → Done；reviewer reject → Needs you
+  → 没有 reviewer 时：supervisor 写评论 + Done
 ```
 
 P1 live trial：**12 Done 有 evidence，4 Needs you，16 张卡**，包括：
@@ -187,6 +187,21 @@ P1 live trial：**12 Done 有 evidence，4 Needs you，16 张卡**，包括：
 - done 但不给 evidence → blocked
 - 过期 lease → live reclaim
 - 真实 SIGKILL → app 重启，不重复 prompt
+
+## 🔍 Review gate
+
+当 worker 配置里声明了 `reviewer` 角色时，builder 的 Done 候选会多走一步：
+
+- builder 返回 `done` 后，卡进入 `reviewing`，而不是直接 Done。
+- reviewer 是独立的常驻 DSH worker，有自己的 `cwd` 和 `docs/agents/reviewer.md`。
+- reviewer `pass` → Done，结论和证据以评论写回卡上。
+- reviewer `reject` → 卡停留在 `reviewing` 并写入 `blockedReason`，进入 **Needs you**。
+- `reviewing` 的卡在下一个 supervisor 周期被评审，不在同一个周期。
+- `in_review` 仍是人工处理状态；reviewer 不使用它。
+- 没有配置 reviewer 时，只有 builder 的原有路径不变。
+- reviewer 不评审分配给自己的卡。
+
+完整 live 验收步骤见 [P1.2 review gate runbook](docs/spikes/p1.2-review-gate.md)。
 
 ## 🛡️ 安全
 
@@ -204,7 +219,7 @@ P1 live trial：**12 Done 有 evidence，4 Needs you，16 张卡**，包括：
 - Mac/DSH 必须开着；还没有 hosted board。
 - worker 工具依赖 DSH preset，默认假设 `standard`。
 - 真实 crash 后 reclaim 已测，但 7 天 soak 未做。
-- 还没有门神 / 眼镜 handoff。
+- review gate 已接线，并有 fake e2e 测试覆盖；live 验收尚未执行。
 - 还没有 A2A、MCP、Grok adapter、hosted board。
 
 ## 🗺️ 路线
@@ -225,6 +240,7 @@ P1 live trial：**12 Done 有 evidence，4 Needs you，16 张卡**，包括：
 - [P1 trial](docs/spikes/p1.1-ten-card-trial.md)
 - [Lease / crash probe](docs/spikes/p1.1-lease-and-crash.md)
 - [SIGKILL probe](docs/spikes/p1.1-kill9.md)
+- [P1.2 review gate runbook](docs/spikes/p1.2-review-gate.md)
 
 ## 🛠️ 开发
 

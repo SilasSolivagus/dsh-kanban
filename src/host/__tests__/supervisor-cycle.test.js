@@ -923,6 +923,43 @@ test('a card handed to review is reviewed on the next cycle, not the same one', 
   assert.equal(world.calls.claimReview.length, 1)
 })
 
+test('builder -> reviewing -> reviewer pass -> done', async (t) => {
+  const world = makeWorld(t, {
+    workers: [WORKER, REVIEWER],
+    reply: doneReply,
+    reviewReply: passReply,
+  })
+  const card = world.seed()
+
+  await world.makeSupervisor().runOnce() // builder -> reviewing
+  assert.equal(world.tasks.get(card.id).status, 'reviewing')
+
+  await world.makeSupervisor().runOnce() // reviewer -> done
+  assert.equal(world.tasks.get(card.id).status, 'done')
+  assert.equal(world.calls.prompt.length, 2)
+})
+
+test('builder -> reviewing -> reviewer reject -> Needs you', async (t) => {
+  const world = makeWorld(t, {
+    workers: [WORKER, REVIEWER],
+    reply: doneReply,
+    reviewReply: rejectReply,
+  })
+  const card = world.seed()
+
+  await world.makeSupervisor().runOnce() // builder -> reviewing
+  assert.equal(world.tasks.get(card.id).status, 'reviewing')
+
+  await world.makeSupervisor().runOnce() // reviewer -> blocked in reviewing
+  const reviewed = world.tasks.get(card.id)
+  assert.equal(reviewed.status, 'reviewing')
+  assert.match(reviewed.blockedReason, /Acceptance test missing/)
+  assert.equal(world.calls.prompt.length, 2)
+  assert.equal(world.calls.updateStatus.some((call) => call.status === 'done'), false)
+  assert.equal(world.calls.block.at(-1).actor.id, 'reviewer')
+  assert.equal(world.leases.active.size, 0)
+})
+
 test('builder cards are handled before reviewing cards in one cycle', async (t) => {
   const world = makeWorld(t, { workers: [WORKER, REVIEWER] })
   const built = world.seed()
