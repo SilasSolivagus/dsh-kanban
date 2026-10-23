@@ -21925,6 +21925,7 @@ var DshWorkerSession = class {
         return current;
       });
     }
+    this.#titleWorkerSession(parentInfo.parent, worker);
     const freshState = await this.#loadState();
     const freshEntry = freshState.workers[workerId] ?? null;
     if (freshEntry === null || freshEntry.parentId !== parentInfo.parent.id) {
@@ -21996,6 +21997,14 @@ var DshWorkerSession = class {
     }
     this.#trackHandle(handle);
     return { parent: agent };
+  }
+  #titleWorkerSession(agent, worker) {
+    const sessionTitle = this.#optionalService("sessionTitle");
+    if (typeof sessionTitle?.rename !== "function" || !agent?.session) return;
+    try {
+      sessionTitle.rename(agent.session, `Kanban \xB7 ${worker.name}`);
+    } catch {
+    }
   }
   #agentPreset(worker) {
     return typeof worker.agentPreset === "string" && worker.agentPreset.trim() ? worker.agentPreset : "standard";
