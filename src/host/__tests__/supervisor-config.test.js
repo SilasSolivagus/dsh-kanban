@@ -71,6 +71,7 @@ test('loads and normalizes a valid worker config', () => {
       cwd: join(tmpdir(), 'builder-worktree'),
       maxConcurrent: 1,
       timeoutSeconds: 900,
+      agentPreset: 'standard',
       promptFile: join(DEFAULT_PROMPT_DIR, 'builder.md'),
     })
   })
@@ -221,6 +222,6 @@ test('the example config documents the expected shape', () => {
   assert.deepEqual(Object.keys(example), ['workers'])
   assert.deepEqual(
     Object.keys(example.workers[0]).sort(),
-    ['cwd', 'id', 'maxConcurrent', 'name', 'role', 'timeoutSeconds'],
+    ['agentPreset', 'cwd', 'id', 'maxConcurrent', 'name', 'role', 'timeoutSeconds'],
   )
 })

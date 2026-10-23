@@ -556,6 +556,10 @@ export class DshWorkerSession {
     return { parent: agent }
   }
 
+  #agentPreset(worker) {
+    return typeof worker.agentPreset === 'string' && worker.agentPreset.trim() ? worker.agentPreset : 'standard'
+  }
+
   async #createParent(worker) {
     const agentLoop = this.#requireService('agentLoop', ['createAgent'])
     const ctx = this.#ownerContext()
@@ -566,7 +570,7 @@ export class DshWorkerSession {
       handle = await withTimeout(
         Promise.resolve(agentLoop.createAgent(ctx, {
           sessionId: randomUUID(),
-          meta: { cwd: this.#resolveCwd(worker), isSeeded: false },
+          meta: { cwd: this.#resolveCwd(worker), isSeeded: false, agentPreset: this.#agentPreset(worker) },
           ...(agentOptions === undefined ? {} : { agentOptions }),
           signal: AbortSignal.timeout(ACCEPT_TIMEOUT_MS),
         })),
@@ -604,6 +608,7 @@ export class DshWorkerSession {
             parent,
             prompt: [{ type: 'text', text: BOOTSTRAP_PROMPT }],
             cwd: this.#resolveCwd(worker),
+            agentPreset: this.#agentPreset(worker),
           },
           signal: AbortSignal.timeout(ACCEPT_TIMEOUT_MS),
           delivery: 'caller',

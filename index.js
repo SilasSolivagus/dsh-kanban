@@ -21048,6 +21048,7 @@ function loadWorkers(file2 = defaultWorkersFile(), { promptDir = DEFAULT_PROMPT_
     const cwd = requireString(entry.cwd, "cwd", index);
     const maxConcurrent = requirePositiveInteger(entry.maxConcurrent, "maxConcurrent", index);
     const timeoutSeconds = requirePositiveInteger(entry.timeoutSeconds, "timeoutSeconds", index);
+    const agentPreset = entry.agentPreset === void 0 ? "standard" : requireString(entry.agentPreset, "agentPreset", index);
     if (!isAbsolute(cwd)) {
       throw configError(`workers[${index}].cwd must be an absolute path`);
     }
@@ -21063,7 +21064,7 @@ function loadWorkers(file2 = defaultWorkersFile(), { promptDir = DEFAULT_PROMPT_
     const promptFile = requirePromptFile(role, promptDir);
     ids.add(id);
     roles.add(role);
-    return { id, name, role, cwd, maxConcurrent, timeoutSeconds, promptFile };
+    return { id, name, role, cwd, maxConcurrent, timeoutSeconds, agentPreset, promptFile };
   });
   return { workers };
 }
@@ -21987,6 +21988,9 @@ var DshWorkerSession = class {
     this.#trackHandle(handle);
     return { parent: agent };
   }
+  #agentPreset(worker) {
+    return typeof worker.agentPreset === "string" && worker.agentPreset.trim() ? worker.agentPreset : "standard";
+  }
   async #createParent(worker) {
     const agentLoop = this.#requireService("agentLoop", ["createAgent"]);
     const ctx = this.#ownerContext();
@@ -21996,7 +22000,7 @@ var DshWorkerSession = class {
       handle = await withTimeout(
         Promise.resolve(agentLoop.createAgent(ctx, {
           sessionId: randomUUID(),
-          meta: { cwd: this.#resolveCwd(worker), isSeeded: false },
+          meta: { cwd: this.#resolveCwd(worker), isSeeded: false, agentPreset: this.#agentPreset(worker) },
           ...agentOptions === void 0 ? {} : { agentOptions },
           signal: AbortSignal.timeout(ACCEPT_TIMEOUT_MS)
         })),
@@ -22028,7 +22032,8 @@ var DshWorkerSession = class {
           request: {
             parent,
             prompt: [{ type: "text", text: BOOTSTRAP_PROMPT }],
-            cwd: this.#resolveCwd(worker)
+            cwd: this.#resolveCwd(worker),
+            agentPreset: this.#agentPreset(worker)
           },
           signal: AbortSignal.timeout(ACCEPT_TIMEOUT_MS),
           delivery: "caller"

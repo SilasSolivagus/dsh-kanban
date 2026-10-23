@@ -96,6 +96,7 @@ export function loadWorkers(file = defaultWorkersFile(), { promptDir = DEFAULT_P
     const cwd = requireString(entry.cwd, 'cwd', index)
     const maxConcurrent = requirePositiveInteger(entry.maxConcurrent, 'maxConcurrent', index)
     const timeoutSeconds = requirePositiveInteger(entry.timeoutSeconds, 'timeoutSeconds', index)
+    const agentPreset = entry.agentPreset === undefined ? 'standard' : requireString(entry.agentPreset, 'agentPreset', index)
 
     if (!isAbsolute(cwd)) {
       throw configError(`workers[${index}].cwd must be an absolute path`)
@@ -114,7 +115,7 @@ export function loadWorkers(file = defaultWorkersFile(), { promptDir = DEFAULT_P
 
     ids.add(id)
     roles.add(role)
-    return { id, name, role, cwd, maxConcurrent, timeoutSeconds, promptFile }
+    return { id, name, role, cwd, maxConcurrent, timeoutSeconds, agentPreset, promptFile }
   })
 
   return { workers }
