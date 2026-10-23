@@ -478,9 +478,9 @@ function SidebarIcon({ size = 18 }) {
   </svg>
 }
 
-const BoardApp = (props) => <App {...props} onOpenOffice={() => openOffice(ctx.uiWorkspace)} />
-
 export function apply(ctx) {
+  const BoardApp = (props) => <App {...props} onOpenOffice={() => openOffice(ctx.uiWorkspace)} />
+
   ctx.effect(() => {
     const offZh = ctx.locale.register(NS, 'zh', ZH)
     const offEn = ctx.locale.register(NS, 'en', EN)

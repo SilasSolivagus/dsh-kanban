@@ -5560,23 +5560,23 @@ var EN = {
 function SidebarIcon({ size = 18 }) {
   return /* @__PURE__ */ import_react11.default.createElement("svg", { width: size, height: size, viewBox: "0 0 18 18", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react11.default.createElement("rect", { x: "2.2", y: "2.5", width: "3.3", height: "13", rx: "1.2", fill: "currentColor", opacity: ".38" }), /* @__PURE__ */ import_react11.default.createElement("rect", { x: "7.35", y: "2.5", width: "3.3", height: "13", rx: "1.2", fill: "currentColor", opacity: ".66" }), /* @__PURE__ */ import_react11.default.createElement("rect", { x: "12.5", y: "2.5", width: "3.3", height: "13", rx: "1.2", fill: "currentColor" }));
 }
-var BoardApp = (props) => /* @__PURE__ */ import_react11.default.createElement(App, { ...props, onOpenOffice: () => openOffice(ctx.uiWorkspace) });
-function apply(ctx2) {
-  ctx2.effect(() => {
-    const offZh = ctx2.locale.register(NS, "zh", ZH);
-    const offEn = ctx2.locale.register(NS, "en", EN);
+function apply(ctx) {
+  const BoardApp = (props) => /* @__PURE__ */ import_react11.default.createElement(App, { ...props, onOpenOffice: () => openOffice(ctx.uiWorkspace) });
+  ctx.effect(() => {
+    const offZh = ctx.locale.register(NS, "zh", ZH);
+    const offEn = ctx.locale.register(NS, "en", EN);
     return () => {
       offZh();
       offEn();
     };
   }, "dsh-kanban: locale");
-  const t = ctx2.locale.bind(NS);
-  ctx2.slots.inject("main", () => ctx2.slots.register({
+  const t = ctx.locale.bind(NS);
+  ctx.slots.inject("main", () => ctx.slots.register({
     name: "main",
     key: "kanban",
     locale: NS
   }, BoardApp));
-  ctx2.slots.inject("sidebar.panellist", () => ctx2.slots.register({
+  ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({
     name: "sidebar.panellist",
     id: "kanban",
     order: 20,
