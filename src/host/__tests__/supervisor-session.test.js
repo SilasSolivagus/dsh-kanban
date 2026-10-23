@@ -124,7 +124,7 @@ function makeWorld(t, overrides = {}) {
     createAgent: async (ownerCtx, options) => {
       calls.push({ type: 'createAgent', ownerCtx, options })
       parentCounter += 1
-      const parent = { id: options?.sessionId ?? `parent-${parentCounter}` }
+      const parent = { id: options?.sessionId ?? `parent-${parentCounter}`, session: {} }
       parents.set(parent.id, parent)
       liveParents.add(parent.id)
       return {
@@ -135,7 +135,7 @@ function makeWorld(t, overrides = {}) {
     resume: async (ownerCtx, options) => {
       calls.push({ type: 'resume', ownerCtx, options })
       if (overrides.resumeError) throw overrides.resumeError
-      const parent = parents.get(options.resumeSessionId) ?? { id: options.resumeSessionId }
+      const parent = parents.get(options.resumeSessionId) ?? { id: options.resumeSessionId, session: {} }
       parents.set(parent.id, parent)
       liveParents.add(parent.id)
       return {
@@ -174,6 +174,9 @@ function makeWorld(t, overrides = {}) {
     sessionPersistence: { name: 'fake-persistence' },
     agentDefaultModel: { currentSelection: () => ({ provider: 'fake', model: 'fake-model' }) },
     workingDirectory: { defaultDirectory: '/tmp/builder-worktree' },
+    sessionTitle: {
+      rename(session, title) { calls.push({ type: 'rename-title', session, title }) },
+    },
   }
 
   for (const name of overrides.omitServices ?? []) delete services[name]
@@ -252,6 +255,9 @@ test('ensure creates one hidden parent and one child, and returns both ids', asy
   assert.equal(activation.spec.request.parent.id, ids.parentId)
   assert.equal(activation.spec.request.cwd, WORKER.cwd)
   assert.ok(textOf(activation.spec.request.prompt).length > 0, 'bootstrap prompt must not be empty')
+  const rename = world.calls.find((call) => call.type === 'rename-title')
+  assert.ok(rename, 'expected the hidden parent to get a readable title')
+  assert.match(rename.title, /Kanban · 扳子/)
 })
 
 test('repeated ensure calls reuse the same parent and child', async (t) => {
