@@ -15,9 +15,9 @@ const PROMPT_DIR_CANDIDATES = [
 ]
 export const DEFAULT_PROMPT_DIR = PROMPT_DIR_CANDIDATES.find((candidate) => existsSync(candidate)) ?? PROMPT_DIR_CANDIDATES[0]
 
-// P1 has one human-facing role and one worker role. A role is only usable
-// when its prompt file exists under docs/agents/.
-export const WORKER_ROLES = Object.freeze(['office', 'builder'])
+// P1 has one human-facing role, an executor, and a reviewer. A role is only
+// usable when its prompt file exists under docs/agents/.
+export const WORKER_ROLES = Object.freeze(['office', 'builder', 'reviewer'])
 
 function configError(message) {
   return Object.assign(new Error(message), { code: 'WORKER_CONFIG_ERROR' })

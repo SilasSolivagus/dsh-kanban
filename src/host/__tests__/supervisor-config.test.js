@@ -85,6 +85,14 @@ test('accepts the office role', () => {
   })
 })
 
+test('accepts one reviewer worker', () => {
+  withWorkers([builder({ id: 'reviewer', name: 'Reviewer', role: 'reviewer' })], (file) => {
+    const { workers } = loadWorkers(file)
+    assert.equal(workers[0].role, 'reviewer')
+    assert.match(workers[0].promptFile, /reviewer\.md$/)
+  })
+})
+
 test('accepts an empty worker list', () => {
   withWorkers([], (file) => {
     assert.deepEqual(loadWorkers(file).workers, [])
@@ -93,10 +101,14 @@ test('accepts an empty worker list', () => {
 
 test('the committed example config is valid', () => {
   const { workers } = loadWorkers(EXAMPLE_FILE)
-  assert.equal(workers.length, 1)
+  assert.equal(workers.length, 2)
   assert.equal(workers[0].id, 'builder')
   assert.equal(workers[0].name, 'Builder')
   assert.equal(workers[0].role, 'builder')
+  assert.equal(workers[1].id, 'reviewer')
+  assert.equal(workers[1].name, 'Reviewer')
+  assert.equal(workers[1].role, 'reviewer')
+  assert.match(workers[1].promptFile, /reviewer\.md$/)
 })
 
 for (const field of ['id', 'name', 'role', 'cwd', 'maxConcurrent', 'timeoutSeconds']) {
