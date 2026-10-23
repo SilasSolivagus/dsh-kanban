@@ -31,7 +31,14 @@ export {
   loadWorkers,
   workerByRole,
 } from './config.js'
-export { PROMPT_ERROR, RESULT_ERROR, buildWorkerPrompt, parseWorkerResult } from './prompt.js'
+export {
+  PROMPT_ERROR,
+  RESULT_ERROR,
+  buildReviewPrompt,
+  buildWorkerPrompt,
+  parseReviewResult,
+  parseWorkerResult,
+} from './prompt.js'
 export {
   DEFAULT_STATE_FILE as DEFAULT_SESSION_STATE_FILE,
   DshWorkerSession,
