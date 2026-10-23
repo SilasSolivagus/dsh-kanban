@@ -22,6 +22,10 @@ export class BoardPort {
     throw notImplemented('listAssigned')
   }
 
+  listReviewQueue(actorId) {
+    throw notImplemented('listReviewQueue')
+  }
+
   getTask(id) {
     throw notImplemented('getTask')
   }
@@ -30,8 +34,16 @@ export class BoardPort {
     throw notImplemented('claim')
   }
 
+  claimReview(id, actor, leaseSeconds) {
+    throw notImplemented('claimReview')
+  }
+
   updateStatus(id, version, status, actor) {
     throw notImplemented('updateStatus')
+  }
+
+  submitForReview(id, version, actor) {
+    throw notImplemented('submitForReview')
   }
 
   comment(id, body, actor) {
@@ -94,6 +106,17 @@ export class LocalBoardAdapter extends BoardPort {
     )
   }
 
+  async listReviewQueue(actorId) {
+    const archivedProjects = new Set(
+      this.#store.bootstrap().projects.filter((project) => project.archivedAt).map((project) => project.id),
+    )
+    return this.#store.bootstrap().tasks.filter((task) =>
+      task.status === 'reviewing' &&
+      !task.archivedAt &&
+      !archivedProjects.has(task.projectId),
+    )
+  }
+
   getTask(id) {
     return this.#store.getTaskDetail(id).task
   }
@@ -115,8 +138,18 @@ export class LocalBoardAdapter extends BoardPort {
     }
   }
 
+  async claimReview(id, actor, leaseSeconds) {
+    const task = this.getTask(id)
+    await this.#leases.claim(id, actor, leaseSeconds)
+    return task
+  }
+
   async updateStatus(id, version, status, actor) {
     return this.#store.updateTask(id, { version, status }, actor)
+  }
+
+  async submitForReview(id, version, actor) {
+    return this.#store.updateTask(id, { version, status: 'reviewing' }, actor)
   }
 
   async comment(id, body, actor) {
